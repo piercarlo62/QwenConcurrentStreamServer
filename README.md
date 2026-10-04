@@ -1,6 +1,6 @@
 # ASR Concurrent Stream Server
 
-Concurrent streaming gRPC server and client for Qwen3-ASR.
+Concurrent streaming gRPC server and client for Qwen3-ASR with vLLM continuous batching.
 
 ## Installation
 
@@ -38,10 +38,9 @@ The server reads configuration from environment variables:
 | `ASR_MODEL_PATH` | `Qwen/Qwen3-ASR-1.7B` | Model path or HuggingFace ID |
 | `ASR_GPU_MEMORY_UTILIZATION` | `0.30` | GPU memory fraction |
 | `ASR_MAX_MODEL_LEN` | `4096` | Maximum model sequence length |
-| `ASR_MAX_CONCURRENT_STREAMS` | `15` | Maximum concurrent streams |
-| `ASR_MAX_BATCH_SIZE` | `8` | Maximum batch size |
-| `ASR_BATCH_TIMEOUT_MS` | `50` | Batch timeout in milliseconds |
-| `ASR_WORKER_THREADS` | `4` | Number of worker threads |
+| `ASR_MAX_NUM_BATCHED_TOKENS` | `2048` | Max tokens per vLLM batch |
+| `ASR_MAX_NUM_SEQS` | `16` | Max concurrent sequences in vLLM |
+| `ASR_MAX_CONCURRENT_STREAMS` | `15` | Maximum concurrent streams (excess queued) |
 | `ASR_HEALTH_PORT` | `8080` | HTTP health check port |
 
 ### Run the client
@@ -50,6 +49,42 @@ The server reads configuration from environment variables:
 asr-concurrent-client --audio path/to/audio.wav --language Italian
 ```
 
+## Architecture
+
+### vLLM Continuous Batching
+
+The server uses vLLM's `AsyncLLMEngine` for GPU-level continuous batching. Each stream has its own worker coroutine that submits inference requests to the shared async engine. vLLM's scheduler dynamically batches prefill and decode across all active streams.
+
+```
+Client gRPC bidir stream
+  → Per-stream asyncio.Queue + worker
+    → AsyncLLMEngine.generate() (shared across streams)
+      → vLLM scheduler batches at GPU level
+        → Results → per-stream queue → gRPC response yield
+```
+
+### Sliding Window ASR
+
+Instead of re-encoding the full accumulated audio for each chunk (quadratic cost), the server uses a fixed sliding window:
+
+- **Past context**: 2.0s before current chunk
+- **Present**: 0.5s current chunk
+- **Future context**: 0.5s lookahead from buffer
+
+This bounds prefill cost to ~3 seconds of audio regardless of total utterance length.
+
+### Stream Queuing
+
+When `MAX_CONCURRENT_STREAMS` is reached, new streams are queued instead of rejected. As soon as one stream finishes, the next queued stream starts automatically.
+
+## Performance
+
+| Concurrent Streams | Last chunk → Final (avg) | Wall time |
+|--------------------|-------------------------|-----------|
+| 1 | 60ms | — |
+| 10 | 83ms | 5.5s |
+| 50 | 171ms | 5.7s |
+
 ## Dependencies
 
 | Package | Purpose |
@@ -57,10 +92,10 @@ asr-concurrent-client --audio path/to/audio.wav --language Italian
 | `grpcio` | gRPC framework |
 | `numpy` | Audio array handling |
 | `protobuf` | Protocol buffer serialization |
-| `vllm` | vLLM inference engine |
+| `vllm` | vLLM async inference engine with continuous batching |
 | `transformers` | Model processor and tokenizer |
 
-Optional client dependencies: `soundfile`, `torch` (for Silero VAD segmentation).
+Optional client dependencies: `soundfile`, `torch` (for Silero VAD segmentation), `scipy` (for audio resampling).
 
 ---
 
@@ -123,10 +158,7 @@ Hard-coded defaults in `server/run_asr_grpc_server.sh`:
 | Model | `/app/models/Qwen3-ASR-1.7B` |
 | GPU memory utilization | `0.35` |
 | Max model length | `4096` |
-| Max concurrent streams | `10` |
-| Max batch size | `8` |
-| Batch timeout | `50` ms |
-| Worker threads | `4` |
+| Max concurrent streams | `50` |
 
 ## Project Structure (in image)
 
@@ -139,6 +171,9 @@ Hard-coded defaults in `server/run_asr_grpc_server.sh`:
 │   │   ├── _launch_server.py
 │   │   ├── stream_manager.py
 │   │   ├── inference_coordinator.py
+│   │   ├── asr_model.py
+│   │   ├── asr_processor.py
+│   │   ├── asr_utils.py
 │   │   └── run_asr_grpc_server.sh
 │   └── client/
 │       └── example_client.py
