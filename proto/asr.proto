@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package asr_concurrent_stream;
+
+option py_generic_services = true;
+
+service ASRService {
+  rpc StreamTranscribe(stream AudioChunkRequest) returns (stream TranscriptionResponse);
+  rpc StartStream(StreamStartRequest) returns (StreamStartResponse);
+  rpc FinalizeStream(StreamFinalizeRequest) returns (StreamFinalizeResponse);
+  rpc GetStreamStatus(StreamStatusRequest) returns (StreamStatusResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool serving = 1;
+  string version = 2;
+}
+
+message StreamStartRequest {
+  string stream_id = 1;
+  string context = 2;
+  string language = 3;
+  StreamConfig config = 4;
+}
+
+message StreamStartResponse {
+  string stream_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message StreamFinalizeRequest {
+  string stream_id = 1;
+}
+
+message StreamFinalizeResponse {
+  string stream_id = 1;
+  string final_transcript = 2;
+  string language = 3;
+  bool success = 4;
+  string error = 5;
+  int64 finalization_latency_ms = 6;
+}
+
+message StreamStatusRequest {
+  string stream_id = 1;
+}
+
+message StreamStatusResponse {
+  string stream_id = 1;
+  string status = 2;
+  int32 chunks_received = 3;
+  int64 last_chunk_time_ms = 4;
+}
+
+message StreamConfig {
+  float chunk_size_sec = 1;
+  int32 unfixed_chunk_num = 2;
+  int32 unfixed_token_num = 3;
+  int32 max_buffer_chunks = 4;
+}
+
+message AudioChunkRequest {
+  string stream_id = 1;
+  int32 chunk_id = 2;
+  bytes audio_data = 3;
+  int32 sample_rate = 4;
+  bool is_final = 5;
+}
+
+message TranscriptionResponse {
+  string stream_id = 1;
+  int32 chunk_id = 2;
+  string partial_transcript = 3;
+  bool is_final = 4;
+  string language = 5;
+  double confidence = 6;
+  int64 latency_ms = 7;
+  int64 processing_timestamp = 8;
+}
