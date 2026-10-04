@@ -249,6 +249,8 @@ class ASRServiceImpl(asr_pb2_grpc.ASRServiceServicer):
                 chunk_size_sec=stream.config.chunk_size_sec,
                 unfixed_chunk_num=stream.config.unfixed_chunk_num,
                 unfixed_token_num=stream.config.unfixed_token_num,
+                context_before_sec=2.0,
+                context_after_sec=0.5,
             )
 
             logger.info(f"Stream {stream_id}: Started")
@@ -391,9 +393,6 @@ async def serve(
     max_num_batched_tokens: int = 2048,
     max_num_seqs: int = 16,
     max_concurrent_streams: int = 30,
-    max_batch_size: int = 8,
-    batch_timeout_ms: int = 50,
-    worker_threads: int = 4,
     health_port: int = 8080,
 ):
     """Start the gRPC server and HTTP health endpoint"""
@@ -404,7 +403,7 @@ async def serve(
 
     if inference_coordinator is None:
         logger.info(f"Loading model from {model_path}...")
-        model = Qwen3ASRModel.LLM(
+        model = Qwen3ASRModel.create_engine(
             model=model_path,
             gpu_memory_utilization=gpu_memory_utilization,
             max_model_len=max_model_len,
@@ -414,12 +413,7 @@ async def serve(
         )
         logger.info("Model loaded")
 
-        inference_coordinator = InferenceCoordinator(
-            model=model,
-            max_batch_size=max_batch_size,
-            batch_timeout_ms=batch_timeout_ms,
-            worker_threads=worker_threads,
-        )
+        inference_coordinator = InferenceCoordinator(model=model)
         await inference_coordinator.start()
 
     servicer = ASRServiceImpl(stream_manager, inference_coordinator)

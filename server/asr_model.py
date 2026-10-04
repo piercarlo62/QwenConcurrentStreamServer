@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from vllm import TextPrompt
+
 import numpy as np
 
 from server.asr_processor import AsrProcessor
@@ -19,9 +21,14 @@ class ASRStreamingState:
     chunk_size_sec: float
     chunk_size_samples: int
 
+    context_before_sec: float
+    context_before_samples: int
+    context_after_sec: float
+    context_after_samples: int
+
     chunk_id: int
     buffer: np.ndarray
-    audio_accum: np.ndarray
+    history: np.ndarray
 
     prompt_raw: str
     context: str
@@ -36,35 +43,42 @@ class Qwen3ASRModel:
     def __init__(
         self,
         backend: str,
-        model: Any,
+        engine: Any,
         processor: Any,
         sampling_params: Optional[Any] = None,
         max_new_tokens: int = 512,
     ):
         self.backend = backend
-        self.model = model
+        self.engine = engine
         self.processor = processor
         self.sampling_params = sampling_params
         self.max_new_tokens = max_new_tokens
 
     @classmethod
-    def LLM(
+    def create_engine(
         cls,
         model: str,
         max_new_tokens: int = 4096,
         **kwargs,
     ):
-        from vllm import LLM as vLLM
-        from vllm import SamplingParams
+        from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
-        llm = vLLM(model=model, limit_mm_per_prompt={"audio": 1}, **kwargs)
+        engine_args = AsyncEngineArgs(
+            model=model,
+            limit_mm_per_prompt={"audio": 1},
+            **kwargs,
+        )
+        engine = AsyncLLMEngine.from_engine_args(engine_args)
 
         processor = AsrProcessor.from_pretrained(model, fix_mistral_regex=True)
-        sampling_params = SamplingParams(temperature=0.0, max_tokens=max_new_tokens)
+        sampling_params = SamplingParams(
+            temperature=0.0,
+            max_tokens=max_new_tokens,
+        )
 
         return cls(
             backend="vllm",
-            model=llm,
+            engine=engine,
             processor=processor,
             sampling_params=sampling_params,
             max_new_tokens=max_new_tokens,
@@ -86,7 +100,9 @@ class Qwen3ASRModel:
         language: Optional[str] = None,
         unfixed_chunk_num: int = 2,
         unfixed_token_num: int = 5,
-        chunk_size_sec: float = 2.0,
+        chunk_size_sec: float = 0.5,
+        context_before_sec: float = 2.0,
+        context_after_sec: float = 0.5,
     ) -> ASRStreamingState:
         force_language = None
         if language is not None and str(language).strip() != "":
@@ -97,6 +113,9 @@ class Qwen3ASRModel:
         chunk_size_samples = int(round(float(chunk_size_sec) * SAMPLE_RATE))
         chunk_size_samples = max(1, chunk_size_samples)
 
+        context_before_samples = int(round(float(context_before_sec) * SAMPLE_RATE))
+        context_after_samples = int(round(float(context_after_sec) * SAMPLE_RATE))
+
         prompt_raw = self._build_text_prompt(context=context, force_language=force_language)
 
         return ASRStreamingState(
@@ -104,9 +123,13 @@ class Qwen3ASRModel:
             unfixed_token_num=int(unfixed_token_num),
             chunk_size_sec=float(chunk_size_sec),
             chunk_size_samples=int(chunk_size_samples),
+            context_before_sec=float(context_before_sec),
+            context_before_samples=int(context_before_samples),
+            context_after_sec=float(context_after_sec),
+            context_after_samples=int(context_after_samples),
             chunk_id=0,
             buffer=np.zeros((0,), dtype=np.float32),
-            audio_accum=np.zeros((0,), dtype=np.float32),
+            history=np.zeros((0,), dtype=np.float32),
             prompt_raw=prompt_raw,
             context=context or "",
             force_language=force_language,
@@ -115,99 +138,90 @@ class Qwen3ASRModel:
             _raw_decoded="",
         )
 
-    def streaming_transcribe(self, pcm16k: np.ndarray, state: ASRStreamingState) -> ASRStreamingState:
-        if state is None:
-            raise ValueError("state must not be None. Call init_streaming_state() first.")
-        if pcm16k is None:
-            raise ValueError("pcm16k must not be None.")
+    def _compute_prefix(self, state: ASRStreamingState) -> str:
+        if state.chunk_id < state.unfixed_chunk_num:
+            return ""
+        cur_ids = self.processor.tokenizer.encode(state._raw_decoded)
+        k = int(state.unfixed_token_num)
+        while True:
+            end_idx = max(0, len(cur_ids) - k)
+            prefix = self.processor.tokenizer.decode(cur_ids[:end_idx]) if end_idx > 0 else ""
+            if '\ufffd' not in prefix:
+                return prefix
+            if end_idx == 0:
+                return ""
+            k += 1
 
-        x = np.asarray(pcm16k)
+    def _build_window(self, state: ASRStreamingState, chunk: np.ndarray) -> np.ndarray:
+        past = state.history
+        if past.shape[0] > state.context_before_samples:
+            past = past[-state.context_before_samples:]
+
+        future = state.buffer[:state.context_after_samples]
+
+        parts = []
+        if past.shape[0] > 0:
+            parts.append(past)
+        parts.append(chunk)
+        if future.shape[0] > 0:
+            parts.append(future)
+
+        return np.concatenate(parts, axis=0)
+
+    def prepare_chunk(self, state: ASRStreamingState, pcm: np.ndarray) -> Optional[TextPrompt]:
+        x = np.asarray(pcm)
         if x.ndim != 1:
             x = x.reshape(-1)
 
         if x.dtype == np.int16:
-            x = (x.astype(np.float32) / 32768.0)
+            x = x.astype(np.float32) / 32768.0
         else:
             x = x.astype(np.float32, copy=False)
 
         if x.shape[0] > 0:
             state.buffer = np.concatenate([state.buffer, x], axis=0)
 
-        while state.buffer.shape[0] >= state.chunk_size_samples:
-            chunk = state.buffer[:state.chunk_size_samples]
-            state.buffer = state.buffer[state.chunk_size_samples:]
+        if state.buffer.shape[0] < state.chunk_size_samples:
+            return None
 
-            if state.audio_accum.shape[0] == 0:
-                state.audio_accum = chunk
-            else:
-                state.audio_accum = np.concatenate([state.audio_accum, chunk], axis=0)
+        chunk = state.buffer[:state.chunk_size_samples]
+        state.buffer = state.buffer[state.chunk_size_samples:]
 
-            prefix = ""
-            if state.chunk_id < state.unfixed_chunk_num:
-                prefix = ""
-            else:
-                cur_ids = self.processor.tokenizer.encode(state._raw_decoded)
-                k = int(state.unfixed_token_num)
-                while True:
-                    end_idx = max(0, len(cur_ids) - k)
-                    prefix = self.processor.tokenizer.decode(cur_ids[:end_idx]) if end_idx > 0 else ""
-                    if '\ufffd' not in prefix:
-                        break
-                    else:
-                        if end_idx == 0:
-                            prefix = ""
-                            break
-                        k += 1
+        window = self._build_window(state, chunk)
 
-            prompt = state.prompt_raw + prefix
-            inp = {"prompt": prompt, "multi_modal_data": {"audio": [state.audio_accum]}}
+        state.history = np.concatenate([state.history, chunk], axis=0)
+        if state.history.shape[0] > state.context_before_samples:
+            state.history = state.history[-state.context_before_samples:]
 
-            outputs = self.model.generate([inp], sampling_params=self.sampling_params, use_tqdm=False)
-            gen_text = outputs[0].outputs[0].text
-
-            state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
-
-            lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
-            state.language = lang
-            state.text = txt
-
-            state.chunk_id += 1
-
-        return state
-
-    def finish_streaming_transcribe(self, state: ASRStreamingState) -> ASRStreamingState:
-        if state is None:
-            raise ValueError("state must not be None.")
-
-        if state.buffer is None or state.buffer.shape[0] == 0:
-            return state
-
-        tail = state.buffer
-        state.buffer = np.zeros((0,), dtype=np.float32)
-
-        if state.audio_accum.shape[0] == 0:
-            state.audio_accum = tail
-        else:
-            state.audio_accum = np.concatenate([state.audio_accum, tail], axis=0)
-
-        prefix = ""
-        if state.chunk_id < state.unfixed_chunk_num:
-            prefix = ""
-        else:
-            cur_ids = self.processor.tokenizer.encode(state._raw_decoded)
-            end_idx = max(1, len(cur_ids) - int(state.unfixed_token_num))
-            prefix = self.processor.tokenizer.decode(cur_ids[:end_idx])
-
+        prefix = self._compute_prefix(state)
         prompt = state.prompt_raw + prefix
-        inp = {"prompt": prompt, "multi_modal_data": {"audio": [state.audio_accum]}}
+        return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
-        outputs = self.model.generate([inp], sampling_params=self.sampling_params, use_tqdm=False)
-        gen_text = outputs[0].outputs[0].text
-
+    def apply_output(self, state: ASRStreamingState, gen_text: str) -> None:
+        prefix = self._compute_prefix(state)
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
         state.text = txt
-
         state.chunk_id += 1
-        return state
+
+    def finish_streaming_transcribe(self, state: ASRStreamingState) -> Optional[TextPrompt]:
+        if state.buffer is None or state.buffer.shape[0] == 0:
+            return None
+
+        tail = state.buffer
+        state.buffer = np.zeros((0,), dtype=np.float32)
+
+        state.history = np.concatenate([state.history, tail], axis=0)
+
+        prefix = self._compute_prefix(state)
+        prompt = state.prompt_raw + prefix
+        return TextPrompt(prompt=prompt, multi_modal_data={"audio": [state.history]})
+
+    def apply_finalize_output(self, state: ASRStreamingState, gen_text: str) -> None:
+        prefix = self._compute_prefix(state)
+        state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
+        lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
+        state.language = lang
+        state.text = txt
+        state.chunk_id += 1

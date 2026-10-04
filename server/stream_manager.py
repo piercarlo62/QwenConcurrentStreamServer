@@ -106,6 +106,7 @@ class StreamManager:
 
         self._streams: Dict[str, ManagedStream] = {}
         self._lock = asyncio.Lock()
+        self._waiters: List[asyncio.Event] = []
 
         self._cleanup_task: Optional[asyncio.Task] = None
 
@@ -151,33 +152,49 @@ class StreamManager:
         language: Optional[str] = None,
         config: Optional[StreamConfig] = None,
     ) -> ManagedStream:
-        """Create a new stream"""
-        async with self._lock:
-            if len(self._streams) >= self.max_concurrent_streams:
-                raise StreamLimitsExceededError(
-                    f"Maximum concurrent streams limit reached ({self.max_concurrent_streams})"
-                )
+        """Create a new stream. If max concurrent streams reached, wait for a slot."""
+        while True:
+            async with self._lock:
+                if len(self._streams) < self.max_concurrent_streams:
+                    if stream_id in self._streams:
+                        logger.warning(f"Stream {stream_id} already exists, replacing")
+                        del self._streams[stream_id]
 
-            if stream_id in self._streams:
-                logger.warning(f"Stream {stream_id} already exists, replacing")
-                del self._streams[stream_id]
+                    if config is None:
+                        config = StreamConfig()
 
-            if config is None:
-                config = StreamConfig()
+                    stream = ManagedStream(
+                        stream_id=stream_id,
+                        state=StreamState.ACTIVE,
+                        config=config,
+                        context=context,
+                        forced_language=language,
+                    )
 
-            stream = ManagedStream(
-                stream_id=stream_id,
-                state=StreamState.ACTIVE,
-                config=config,
-                context=context,
-                forced_language=language,
+                    self._streams[stream_id] = stream
+                    self._total_streams_created += 1
+
+                    logger.debug(f"Created stream {stream_id}")
+                    return stream
+
+            event = asyncio.Event()
+            self._waiters.append(event)
+            logger.debug(
+                f"Stream {stream_id}: waiting for slot "
+                f"({len(self._streams)}/{self.max_concurrent_streams} active)"
             )
-
-            self._streams[stream_id] = stream
-            self._total_streams_created += 1
-
-            logger.debug(f"Created stream {stream_id}")
-            return stream
+            try:
+                await event.wait()
+            except asyncio.CancelledError:
+                try:
+                    self._waiters.remove(event)
+                except ValueError:
+                    pass
+                raise
+            try:
+                self._waiters.remove(event)
+            except ValueError:
+                pass
 
     async def get_stream(self, stream_id: str) -> Optional[ManagedStream]:
         """Get stream by ID"""
@@ -242,6 +259,11 @@ class StreamManager:
                 f"Closed stream {stream_id} (age: {stream.age_seconds:.1f}s, "
                 f"chunks: {stream.metrics.chunks_received})"
             )
+
+            if self._waiters:
+                waiter = self._waiters.pop(0)
+                waiter.set()
+
             return True
 
     async def update_metrics(

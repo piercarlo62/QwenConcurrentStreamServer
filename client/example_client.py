@@ -65,8 +65,9 @@ def load_audio(audio_file: str) -> np.ndarray:
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
     if sr != SAMPLE_RATE:
-        import librosa
-        audio = librosa.resample(audio, orig_sr=sr, target_sr=SAMPLE_RATE)
+        from scipy.signal import resample
+        num_samples = int(len(audio) * SAMPLE_RATE / sr)
+        audio = resample(audio, num_samples)
     return audio.astype(np.float32)
 
 
@@ -91,6 +92,7 @@ def segment_audio_with_vad(
         model="silero_vad",
         force_reload=False,
         verbose=False,
+        trust_repo="true",
     )
     _, _, _, VADIterator, _ = utils
     vad_iter = VADIterator(

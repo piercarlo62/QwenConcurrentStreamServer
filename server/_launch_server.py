@@ -29,9 +29,6 @@ async def _main() -> None:
     max_num_batched_tokens= int(os.environ.get("ASR_MAX_NUM_BATCHED_TOKENS", "2048"))
     max_num_seqs          = int(os.environ.get("ASR_MAX_NUM_SEQS", "16"))
     max_concurrent_streams= int(os.environ["ASR_MAX_CONCURRENT_STREAMS"])
-    max_batch_size        = int(os.environ["ASR_MAX_BATCH_SIZE"])
-    batch_timeout_ms      = int(os.environ["ASR_BATCH_TIMEOUT_MS"])
-    worker_threads        = int(os.environ["ASR_WORKER_THREADS"])
     health_port           = int(os.environ.get("ASR_HEALTH_PORT", "8080"))
 
     server, stream_manager, coordinator, http_health = await serve(
@@ -42,9 +39,6 @@ async def _main() -> None:
         max_num_batched_tokens=max_num_batched_tokens,
         max_num_seqs=max_num_seqs,
         max_concurrent_streams=max_concurrent_streams,
-        max_batch_size=max_batch_size,
-        batch_timeout_ms=batch_timeout_ms,
-        worker_threads=worker_threads,
         health_port=health_port,
     )
 
