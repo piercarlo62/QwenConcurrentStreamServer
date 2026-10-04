@@ -20,7 +20,7 @@ For development (regenerating protobuf code):
 pip install asr-concurrent-stream[dev]
 ```
 
-**Note:** The server requires `vllm` and `transformers` to run the Qwen3-ASR model. These are installed automatically with the package.
+**Note:** The server requires `vllm` and `transformers` to run the Qwen3-ASR model. The model is loaded directly via vLLM's `AsyncLLMEngine` — no separate `qwen-asr` package needed.
 
 ## Quick Start
 
@@ -95,7 +95,7 @@ When `MAX_CONCURRENT_STREAMS` is reached, new streams are queued instead of reje
 | `vllm` | vLLM async inference engine with continuous batching |
 | `transformers` | Model processor and tokenizer |
 
-Optional client dependencies: `soundfile`, `torch` (for Silero VAD segmentation), `scipy` (for audio resampling).
+Optional client dependencies: `soundfile` or `scipy` (for audio loading/resampling), `torch` (for Silero VAD segmentation).
 
 ---
 
@@ -116,7 +116,7 @@ Optional client dependencies: `soundfile`, `torch` (for Silero VAD segmentation)
 1. **System dependencies** — `curl`, `git`, `wget`, `build-essential`, `ffmpeg`, `libsox-*`, `libsndfile1`, `libopus0`, `libffi-dev`.
 2. **Python 3.12** — installed via deadsnakes PPA, venv created at `/opt/venv`, binaries symlinked to `/usr/local/bin`.
 3. **pip** — upgraded to latest `pip`, `setuptools`, `wheel`.
-4. **`qwen-asr[vllm]`** — installs the full Qwen3-ASR stack with vLLM extras (transformers, vllm, torch, accelerate, librosa, soundfile, etc. with pinned versions).
+4. **`vllm`** — installs vLLM with all required dependencies (transformers, torch, etc.). The server uses vLLM's `AsyncLLMEngine` directly to load and run the Qwen3-ASR model.
 5. **flash-attention** — prebuilt wheel for CUDA 12.8 + PyTorch 2.9 + Python 3.12.
 6. **Project files** — `ASR_Concurrent_Stream/` copied to `/app/ASR_Concurrent_Stream/`.
 7. **Model download** — `Qwen/Qwen3-ASR-1.7B` downloaded from HuggingFace to `/app/models/Qwen3-ASR-1.7B`.
