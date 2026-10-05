@@ -394,6 +394,7 @@ async def serve(
     max_num_seqs: int = 16,
     max_concurrent_streams: int = 30,
     health_port: int = 8080,
+    punctuate: bool = False,
 ):
     """Start the gRPC server and HTTP health endpoint"""
     logger.info("Starting ASR Concurrent Stream server...")
@@ -411,6 +412,7 @@ async def serve(
             max_num_seqs=max_num_seqs,
             max_new_tokens=32,
         )
+        model.punctuate = punctuate
         logger.info("Model loaded")
 
         inference_coordinator = InferenceCoordinator(model=model)

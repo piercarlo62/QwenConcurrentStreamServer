@@ -87,7 +87,7 @@ class Qwen3ASRModel:
 
     def _build_text_prompt(self, context: str, force_language: Optional[str]) -> str:
         system_msg = context or ""
-        if "punctuate" not in system_msg.lower():
+        if getattr(self, "punctuate", False):
             system_msg = (system_msg + " Transcribe the audio with proper punctuation including periods, question marks, and commas.").strip()
         msgs = [
             {"role": "system", "content": system_msg},

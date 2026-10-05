@@ -79,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         default=int(os.environ.get("ASR_HEALTH_PORT", "8080")),
         help="HTTP health check port (default: 8080)",
     )
+    serve_parser.add_argument(
+        "--punctuate",
+        action="store_true",
+        default=False,
+        help="Enable punctuation in transcription output",
+    )
 
     return parser.parse_args()
 
@@ -93,6 +99,7 @@ async def _run_serve(args: argparse.Namespace) -> None:
         max_num_seqs=args.max_num_seqs,
         max_concurrent_streams=args.max_concurrent_streams,
         health_port=args.health_port,
+        punctuate=args.punctuate,
     )
 
     print(f"ASR gRPC server running on port {args.port}", flush=True)
