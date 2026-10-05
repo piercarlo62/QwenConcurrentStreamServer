@@ -30,6 +30,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve", help="Start the gRPC server")
+    subparsers.add_parser("version", help="Print server version")
 
     serve_parser.add_argument(
         "--model",
@@ -124,6 +125,8 @@ def main() -> None:
 
     if args.command == "serve":
         asyncio.run(_run_serve(args))
+    elif args.command == "version":
+        print("asr-concurrent-stream 1.0.8")
     elif args.command is None:
         print("Error: missing subcommand. Usage: asr-concurrent-server serve [args]", file=sys.stderr)
         sys.exit(1)
