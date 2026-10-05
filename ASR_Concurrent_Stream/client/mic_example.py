@@ -40,8 +40,10 @@ async def main():
         print(f"\r[partial] {text}", end="", flush=True)
 
     def on_final(text):
-        latency_ms = int((time.time() - last_chunk_time[0]) * 1000) if last_chunk_time[0] > 0 else 0
-        print(f"\n[FINAL][{latency_ms}ms] {text}\n")
+        now = time.time()
+        submit_latency = int((now - last_chunk_time[0]) * 1000) if last_chunk_time[0] > 0 else 0
+        speech_latency = int((now - client.speech_end_time) * 1000) if client.speech_end_time > 0 else 0
+        print(f"\n[FINAL][submit={submit_latency}ms speech={speech_latency}ms] {text}\n")
 
     client.on_partial = on_partial
     client.on_final = on_final

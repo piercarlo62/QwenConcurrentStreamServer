@@ -2,6 +2,7 @@ import asyncio
 import queue
 import sys
 import os
+import time
 import uuid
 import threading
 from typing import Callable, Optional
@@ -62,6 +63,7 @@ class RealtimeASRClient:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._tasks: list = []
         self._segment_idx = 0
+        self.speech_end_time: float = 0.0
 
     async def start(self):
         channel = grpc.aio.insecure_channel(
@@ -160,6 +162,7 @@ class RealtimeASRClient:
                     await out_q.put(("audio", chunk_id, int16_bytes))
                     chunk_id += 1
                 elif ev is not None and "end" in ev and in_speech:
+                    self.speech_end_time = time.time()
                     await out_q.put(("final", chunk_id, int16_bytes))
                     in_speech = False
                     chunk_id = 0
