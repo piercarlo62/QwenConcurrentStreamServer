@@ -338,7 +338,8 @@ class InferenceCoordinator:
                     unstable=self.UNSTABLE,
                 )
                 state.text = " ".join(merged)
-                self._save_partials_debug(self._stream_partials[stream_id], stream_id)
+                final_text = " ".join(merged)
+                self._save_partials_debug(self._stream_partials[stream_id], stream_id, final_text)
                 del self._stream_partials[stream_id]
 
             if len(state.text) < len(text_before):
@@ -370,7 +371,7 @@ class InferenceCoordinator:
             return None
 
     @staticmethod
-    def _save_partials_debug(partials: list, stream_id: str) -> None:
+    def _save_partials_debug(partials: list, stream_id: str, final_text: str = "") -> None:
         try:
             out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "partials_lists")
             os.makedirs(out_dir, exist_ok=True)
@@ -380,6 +381,8 @@ class InferenceCoordinator:
             with open(filepath, "w", encoding="utf-8") as f:
                 for i, p in enumerate(partials):
                     f.write(f"[partial {i}] {p}\n")
+                if final_text:
+                    f.write(f"[final] {final_text}\n")
         except Exception:
             pass
 
