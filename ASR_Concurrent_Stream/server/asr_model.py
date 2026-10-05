@@ -38,6 +38,7 @@ class ASRStreamingState:
     language: str
     text: str
     _raw_decoded: str
+    partials_list: list
 
 
 class Qwen3ASRModel:
@@ -140,6 +141,7 @@ class Qwen3ASRModel:
             language="",
             text="",
             _raw_decoded="",
+            partials_list=[],
         )
 
     def _compute_prefix(self, state: ASRStreamingState) -> str:
@@ -201,12 +203,41 @@ class Qwen3ASRModel:
         prompt = state.prompt_raw + prefix
         return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
+    @staticmethod
+    def _overlap_merge(text1: str, text2: str, min_overlap: int = 2) -> str:
+        words1 = text1.split()
+        words2 = text2.split()
+        best = 0
+        for k in range(min(len(words1), len(words2)), min_overlap - 1, -1):
+            if words1[-k:] == words2[:k]:
+                best = k
+                break
+        if best >= min_overlap:
+            return " ".join(words1 + words2[best:])
+        non_overlap = []
+        for w in words2:
+            if w not in words1:
+                non_overlap.append(w)
+        if non_overlap:
+            return " ".join(words1 + non_overlap)
+        return " ".join(words1 + words2)
+
+    @staticmethod
+    def _recompose_partials(partials: list) -> str:
+        if not partials:
+            return ""
+        result = partials[0]
+        for i in range(1, len(partials)):
+            result = Qwen3ASRModel._overlap_merge(result, partials[i])
+        return result
+
     def apply_output(self, state: ASRStreamingState, gen_text: str) -> None:
         prefix = self._compute_prefix(state)
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.text = txt
+        state.partials_list.append(txt)
+        state.text = self._recompose_partials(state.partials_list)
         state.chunk_id += 1
 
     def finish_streaming_transcribe(self, state: ASRStreamingState) -> Optional[TextPrompt]:
@@ -234,5 +265,6 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.text = txt
+        state.partials_list.append(txt)
+        state.text = self._recompose_partials(state.partials_list)
         state.chunk_id += 1
