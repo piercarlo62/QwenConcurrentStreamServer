@@ -8,13 +8,10 @@ scheduler batches requests across all active streams dynamically.
 
 import asyncio
 import logging
-import os
-import re
 import time
 import numpy as np
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -38,72 +35,7 @@ class TranscriptionResult:
     timestamp_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
 
-def _norm_word(w: str) -> str:
-    return re.sub(r"[^\w]", "", w.lower())
-
-
-def _word_similarity(a: str, b: str) -> float:
-    a, b = _norm_word(a), _norm_word(b)
-    if not a or not b:
-        return 0.0
-    return SequenceMatcher(None, a, b).ratio()
-
-
-def _align_tail_head(tail, head, gap=-1.5, match_thr=0.75):
-    n, m = len(tail), len(head)
-    H = [[0.0] * (m + 1) for _ in range(n + 1)]
-    for j in range(1, m + 1):
-        H[0][j] = H[0][j - 1] + gap
-    for i in range(1, n + 1):
-        H[i][0] = 0.0
-        for j in range(1, m + 1):
-            sim = _word_similarity(tail[i - 1], head[j - 1])
-            sp = 2.0 * sim if sim >= match_thr else -1.0
-            H[i][j] = max(
-                H[i - 1][j - 1] + sp,
-                H[i - 1][j] + gap,
-                H[i][j - 1] + gap,
-            )
-    best_j = max(range(1, m + 1), key=lambda j: H[n][j])
-    return H[n][best_j], best_j
-
-
-def _extract_new_suffix_words(prev_words: List[str], new_words: List[str],
-                              min_matches=2) -> List[str]:
-    """Compare previous partial with current partial.
-    Find the longest prefix of new_words that overlaps with a prefix of prev_words.
-    Return only the non-overlapping suffix from new_words.
-    """
-    if not prev_words:
-        return list(new_words)
-    if not new_words:
-        return []
-    best = 0
-    max_check = min(len(prev_words), len(new_words))
-    for k in range(max_check, 0, -1):
-        match = True
-        for j in range(k):
-            if _word_similarity(prev_words[j], new_words[j]) < 0.6:
-                match = False
-                break
-        if match:
-            best = k
-            break
-    if best >= min_matches:
-        return new_words[best:]
-    for k in range(min(len(prev_words), len(new_words)), 0, -1):
-        if _word_similarity(prev_words[k - 1], new_words[0]) >= 0.6:
-            return new_words
-    return new_words
-
-
 class InferenceCoordinator:
-    MATCH_THRESHOLD = 0.75
-    GAP = -1.5
-    MAX_TAIL = 20
-    UNSTABLE = 2
-    MIN_MATCHES = 2
-    MIN_RATIO = 0.5
 
     def __init__(self, model: Any):
         self.model = model
@@ -118,10 +50,6 @@ class InferenceCoordinator:
 
         self._result_queues: Dict[str, asyncio.Queue] = {}
         self._result_queues_lock = asyncio.Lock()
-
-        self._stream_partials: Dict[str, list] = {}
-        self._prev_partial_words: Dict[str, List[str]] = {}
-        self._partials_lock = asyncio.Lock()
 
         self._finalization_requested: set = set()
         self._finalization_events: Dict[str, asyncio.Event] = {}
@@ -258,19 +186,6 @@ class InferenceCoordinator:
                     async for output in self.engine.generate(inp, self.sampling_params, request_id):
                         gen_text = output.outputs[0].text
                     self.model.apply_output(state, gen_text)
-                    raw_words = state.raw_model_output if hasattr(state, 'raw_model_output') else gen_text
-                    async with self._partials_lock:
-                        if stream_id not in self._stream_partials:
-                            self._stream_partials[stream_id] = []
-                        self._stream_partials[stream_id].append(raw_words)
-                        new_words = raw_words.split()
-                        prev_words = self._prev_partial_words.get(stream_id, [])
-                        new_suffix = _extract_new_suffix_words(prev_words, new_words)
-                        if state.text and new_suffix:
-                            state.text += " " + " ".join(new_suffix)
-                        elif new_suffix:
-                            state.text = " ".join(new_suffix)
-                        self._prev_partial_words[stream_id] = new_words
                     inp = self.model.prepare_chunk(state, np.zeros(0, dtype=np.float32))
 
                 if state.text != last_emitted_text:
@@ -320,8 +235,6 @@ class InferenceCoordinator:
             if state is None:
                 return None
 
-            text_before = state.text
-
             inp = self.model.finish_streaming_transcribe(state)
             if inp is not None:
                 request_id = f"{stream_id}-finalize"
@@ -329,24 +242,6 @@ class InferenceCoordinator:
                 async for output in self.engine.generate(inp, self.sampling_params, request_id):
                     gen_text = output.outputs[0].text
                 self.model.apply_finalize_output(state, gen_text)
-
-            async with self._partials_lock:
-                if stream_id not in self._stream_partials:
-                    self._stream_partials[stream_id] = []
-                self._stream_partials[stream_id].append(state.raw_model_output)
-                final_words = state.raw_model_output.split() if state.raw_model_output else []
-                prev_words = self._prev_partial_words.get(stream_id, [])
-                new_suffix = _extract_new_suffix_words(prev_words, final_words)
-                if state.text and new_suffix:
-                    state.text += " " + " ".join(new_suffix)
-                elif new_suffix:
-                    state.text = " ".join(new_suffix)
-                self._save_partials_debug(self._stream_partials[stream_id], stream_id, state.text)
-                del self._stream_partials[stream_id]
-                del self._prev_partial_words[stream_id]
-
-            if len(state.text) < len(text_before):
-                state.text = text_before
 
             latency_ms = (time.perf_counter() - start_time) * 1000
 
@@ -373,21 +268,7 @@ class InferenceCoordinator:
             logger.error(f"Error finalizing stream {stream_id}: {e}", exc_info=True)
             return None
 
-    @staticmethod
-    def _save_partials_debug(partials: list, stream_id: str, final_text: str = "") -> None:
-        try:
-            out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "partials_lists")
-            os.makedirs(out_dir, exist_ok=True)
-            ts = int(time.time())
-            short_id = stream_id[:8] if stream_id else "unknown"
-            filepath = os.path.join(out_dir, f"{ts}_{short_id}.txt")
-            with open(filepath, "w", encoding="utf-8") as f:
-                for i, p in enumerate(partials):
-                    f.write(f"[partial {i}] {p}\n")
-                if final_text:
-                    f.write(f"[final] {final_text}\n")
-        except Exception:
-            pass
+
 
     async def _send_to_stream_queue(self, result: Optional[TranscriptionResult]):
         if result is None:

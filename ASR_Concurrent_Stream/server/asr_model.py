@@ -38,7 +38,6 @@ class ASRStreamingState:
     language: str
     text: str
     _raw_decoded: str
-    raw_model_output: str
 
 
 class Qwen3ASRModel:
@@ -141,7 +140,6 @@ class Qwen3ASRModel:
             language="",
             text="",
             _raw_decoded="",
-            raw_model_output="",
         )
 
     def _compute_prefix(self, state: ASRStreamingState) -> str:
@@ -236,7 +234,7 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.raw_model_output = txt
+        state.text = txt
         state.chunk_id += 1
 
 
