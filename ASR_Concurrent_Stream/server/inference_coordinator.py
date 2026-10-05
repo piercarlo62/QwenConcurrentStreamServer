@@ -8,6 +8,7 @@ scheduler batches requests across all active streams dynamically.
 
 import asyncio
 import logging
+import os
 import re
 import time
 import numpy as np
