@@ -67,7 +67,7 @@ class RealtimeASRClient:
         self._stub = asr_pb2_grpc.ASRServiceStub(channel)
         self._loop = asyncio.get_event_loop()
         self._running = True
-        self._tasks.append(asyncio.create_task(self._stream_loop())
+        self._tasks.append(asyncio.create_task(self._stream_loop()))
 
     async def stop(self):
         self._running = False
