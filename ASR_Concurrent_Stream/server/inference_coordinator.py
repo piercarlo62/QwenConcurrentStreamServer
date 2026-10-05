@@ -90,6 +90,7 @@ class InferenceCoordinator:
                 chunk_size_sec=chunk_size_sec,
                 context_before_sec=context_before_sec,
                 context_after_sec=context_after_sec,
+                stream_id=stream_id,
             )
             self._stream_states[stream_id] = asr_state
 

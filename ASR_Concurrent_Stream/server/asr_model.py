@@ -1,4 +1,6 @@
 # ASR Concurrent Stream Server v1.0.6
+import os
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +41,8 @@ class ASRStreamingState:
     text: str
     _raw_decoded: str
     previous_partial: str
+    partials_list: list
+    stream_id: str
 
 
 class Qwen3ASRModel:
@@ -108,6 +112,7 @@ class Qwen3ASRModel:
         chunk_size_sec: float = 0.5,
         context_before_sec: float = 5.0,
         context_after_sec: float = 0.5,
+        stream_id: str = "",
     ) -> ASRStreamingState:
         force_language = None
         if language is not None and str(language).strip() != "":
@@ -142,6 +147,8 @@ class Qwen3ASRModel:
             text="",
             _raw_decoded="",
             previous_partial="",
+            partials_list=[],
+            stream_id=stream_id,
         )
 
     def _compute_prefix(self, state: ASRStreamingState) -> str:
@@ -243,6 +250,7 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
+        state.partials_list.append(txt)
         new_suffix = self._extract_new_suffix(state.previous_partial, txt)
         if state.text and new_suffix:
             state.text += " " + new_suffix
@@ -276,10 +284,27 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
+        state.partials_list.append(txt)
         new_suffix = self._extract_new_suffix(state.previous_partial, txt)
         if state.text and new_suffix:
             state.text += " " + new_suffix
         elif new_suffix:
             state.text = new_suffix
+        self._save_partials_debug(state.partials_list, state.stream_id)
         state.previous_partial = ""
+        state.partials_list = []
         state.chunk_id += 1
+
+    @staticmethod
+    def _save_partials_debug(partials: list, stream_id: str) -> None:
+        try:
+            out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server", "partials_lists")
+            os.makedirs(out_dir, exist_ok=True)
+            ts = int(time.time() )
+            short_id = stream_id[:8]
+            filepath = os.path.join(out_dir, f"{ts}_{short_id}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                for i, p in enumerate(partials):
+                    f.write(f"[partial {i}] {p}\n")
+        except Exception:
+            pass
