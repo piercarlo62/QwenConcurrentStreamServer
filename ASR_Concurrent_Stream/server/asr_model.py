@@ -1,8 +1,11 @@
 # ASR Concurrent Stream Server v1.0.6
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+
+from difflib import SequenceMatcher
 
 from vllm import TextPrompt
 
@@ -213,37 +216,81 @@ class Qwen3ASRModel:
     MATCH_THRESHOLD = 0.75
     MIN_OVERLAP_WORDS = 2
 
-    @staticmethod
-    def _normalize_word(w: str) -> str:
-        return w.lower().strip(".,!?;:")
+    MATCH_THRESHOLD = 0.75
+    GAP = -1.5
+    MAX_TAIL = 20
+    UNSTABLE = 2
+    MIN_MATCHES = 2
+    MIN_RATIO = 0.5
 
     @staticmethod
-    def _fuzzy_match(w1: str, w2: str) -> bool:
-        return (
-            Qwen3ASRModel._normalize_word(w1)
-            == Qwen3ASRModel._normalize_word(w2)
-        )
+    def _norm(w: str) -> str:
+        return re.sub(r"[^\w]", "", w.lower())
 
     @staticmethod
-    def _extract_new_suffix(previous: str, new: str) -> str:
-        if not previous:
-            return new
-        prev_words = previous.split()
-        new_words = new.split()
-        best = 0
-        max_check = min(len(prev_words), len(new_words))
-        for k in range(max_check, Qwen3ASRModel.MIN_OVERLAP_WORDS - 1, -1):
-            match = True
-            for j in range(k):
-                if not Qwen3ASRModel._fuzzy_match(prev_words[j], new_words[j]):
-                    match = False
-                    break
-            if match:
-                best = k
-                break
-        if best >= Qwen3ASRModel.MIN_OVERLAP_WORDS:
-            return " ".join(new_words[best:])
-        return " ".join(new_words)
+    def _word_sim(a: str, b: str) -> float:
+        a, b = Qwen3ASRModel._norm(a), Qwen3ASRModel._norm(b)
+        if not a or not b:
+            return 0.0
+        return SequenceMatcher(None, a, b).ratio()
+
+    @staticmethod
+    def _score_pair(a: str, b: str) -> float:
+        s = Qwen3ASRModel._word_sim(a, b)
+        if s >= Qwen3ASRModel.MATCH_THRESHOLD:
+            return 2.0 * s
+        return -1.0
+
+    @staticmethod
+    def _align_tail_head(tail: List[str], head: List[str]):
+        n, m = len(tail), len(head)
+        H = [[0.0] * (m + 1) for _ in range(n + 1)]
+        M = [[0] * (m + 1) for _ in range(n + 1)]
+        for j in range(1, m + 1):
+            H[0][j] = H[0][j - 1] + Qwen3ASRModel.GAP
+        for i in range(1, n + 1):
+            H[i][0] = 0.0
+            for j in range(1, m + 1):
+                sp = Qwen3ASRModel._score_pair(tail[i - 1], head[j - 1])
+                cands = [
+                    (H[i - 1][j - 1] + sp, M[i - 1][j - 1] + (1 if sp > 0 else 0)),
+                    (H[i - 1][j] + Qwen3ASRModel.GAP, M[i - 1][j]),
+                    (H[i][j - 1] + Qwen3ASRModel.GAP, M[i][j - 1]),
+                ]
+                H[i][j], M[i][j] = max(cands, key=lambda c: c[0])
+        best_j = max(range(1, m + 1), key=lambda j: H[n][j])
+        return H[n][best_j], best_j, M[n][best_j]
+
+    @staticmethod
+    def _merge_words(committed: List[str], new: List[str]) -> List[str]:
+        if not committed:
+            return list(new)
+        max_tail = Qwen3ASRModel.MAX_TAIL
+        unstable = Qwen3ASRModel.UNSTABLE
+        min_matches = Qwen3ASRModel.MIN_MATCHES
+        min_ratio = Qwen3ASRModel.MIN_RATIO
+
+        tail_start = max(0, len(committed) - max_tail)
+        tail = committed[tail_start:]
+        head = new[:len(tail) + 5]
+
+        score, j, matches = Qwen3ASRModel._align_tail_head(tail, head)
+        overlap_len = max(len(tail), j)
+        min_matched = min(len(tail), j)
+        ok = matches >= min_matches and matches / max(1, min_matched) >= min_ratio
+
+        if not ok:
+            return committed + list(new)
+
+        keep = max(0, len(committed) - unstable)
+        kept_tail = committed[tail_start:keep]
+        if kept_tail:
+            _, j_kept, m_kept = Qwen3ASRModel._align_tail_head(kept_tail, head)
+            if m_kept >= 1:
+                return committed[:keep] + list(new[j_kept:])
+        if keep <= tail_start:
+            return committed[:tail_start] + list(new)
+        return committed + list(new[j:])
 
     def apply_output(self, state: ASRStreamingState, gen_text: str) -> None:
         prefix = self._compute_prefix(state)
@@ -251,12 +298,10 @@ class Qwen3ASRModel:
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
         state.partials_list.append(txt)
-        new_suffix = self._extract_new_suffix(state.previous_partial, txt)
-        if state.text and new_suffix:
-            state.text += " " + new_suffix
-        elif new_suffix:
-            state.text = new_suffix
-        state.previous_partial = txt
+        committed_words = state.text.split() if state.text else []
+        new_words = txt.split()
+        merged = self._merge_words(committed_words, new_words)
+        state.text = " ".join(merged)
         state.chunk_id += 1
 
     def finish_streaming_transcribe(self, state: ASRStreamingState) -> Optional[TextPrompt]:
@@ -285,11 +330,10 @@ class Qwen3ASRModel:
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
         state.partials_list.append(txt)
-        new_suffix = self._extract_new_suffix(state.previous_partial, txt)
-        if state.text and new_suffix:
-            state.text += " " + new_suffix
-        elif new_suffix:
-            state.text = new_suffix
+        committed_words = state.text.split() if state.text else []
+        new_words = txt.split()
+        merged = self._merge_words(committed_words, new_words)
+        state.text = " ".join(merged)
         self._save_partials_debug(state.partials_list, state.stream_id)
         state.previous_partial = ""
         state.partials_list = []
