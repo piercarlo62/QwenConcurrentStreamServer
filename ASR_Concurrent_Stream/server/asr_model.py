@@ -204,23 +204,66 @@ class Qwen3ASRModel:
         return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
     @staticmethod
-    def _overlap_merge(text1: str, text2: str, min_overlap: int = 2) -> str:
-        words1 = text1.split()
-        words2 = text2.split()
+    def _normalize_word(w: str) -> str:
+        return w.lower().strip(".,!?;:")
+
+    @staticmethod
+    def _find_overlap_words(words1: list, words2: str, min_overlap: int = 2) -> int:
+        n1 = len(words1)
+        words2_list = words2.split() if isinstance(words2, str) else words2
+        n2 = len(words2_list)
         best = 0
-        for k in range(min(len(words1), len(words2)), min_overlap - 1, -1):
-            if words1[-k:] == words2[:k]:
+        for k in range(min(n1, n2), min_overlap - 1, -1):
+            match = True
+            for j in range(k):
+                if Qwen3ASRModel._normalize_word(words1[n1 - k + j]) != Qwen3ASRModel._normalize_word(words2_list[j]):
+                    match = False
+                    break
+            if match:
                 best = k
                 break
-        if best >= min_overlap:
-            return " ".join(words1 + words2[best:])
-        non_overlap = []
-        for w in words2:
-            if w not in words1:
-                non_overlap.append(w)
-        if non_overlap:
-            return " ".join(words1 + non_overlap)
-        return " ".join(words1 + words2)
+        return best
+
+    @staticmethod
+    def _merge_new_partial(accumulated: str, new_partial: str) -> str:
+        if not accumulated:
+            return new_partial
+        acc_words = accumulated.split()
+        norm_acc_words = [Qwen3ASRModel._normalize_word(w) for w in acc_words]
+        new_words = new_partial.split()
+        norm_new_words = [Qwen3ASRModel._normalize_word(w) for w in new_words]
+        best_pos = -1
+        best_len = 0
+        for pos in range(len(norm_acc_words)):
+            for k in range(2, min(len(norm_acc_words) - pos, len(norm_new_words)) + 1):
+                if norm_acc_words[pos:pos + k] == norm_new_words[:k]:
+                    if k > best_len:
+                        best_len = k
+                        best_pos = pos
+        if best_len >= 2:
+            prefix = acc_words[:best_pos]
+            suffix_start = best_pos + best_len
+            if suffix_start >= len(acc_words):
+                new_start = best_len
+            else:
+                remaining_acc = norm_acc_words[suffix_start:]
+                new_start = best_len
+                for k in range(best_len, len(norm_new_words) - 1):
+                    if k + len(remaining_acc) <= len(norm_new_words):
+                        if norm_new_words[k:k + len(remaining_acc)] == remaining_acc:
+                            new_start = k
+                            break
+                else:
+                    new_start = best_len
+            result_words = prefix + new_words[new_start:]
+            return " ".join(result_words)
+        else:
+            new_start = 0
+            for k in range(min(len(norm_acc_words), len(norm_new_words)), 0, -1):
+                if norm_acc_words[-k:] == norm_new_words[:k]:
+                    new_start = k
+                    break
+            return " ".join(acc_words + new_words[new_start:])
 
     @staticmethod
     def _recompose_partials(partials: list) -> str:
@@ -228,7 +271,7 @@ class Qwen3ASRModel:
             return ""
         result = partials[0]
         for i in range(1, len(partials)):
-            result = Qwen3ASRModel._overlap_merge(result, partials[i])
+            result = Qwen3ASRModel._merge_new_partial(result, partials[i])
         return result
 
     def apply_output(self, state: ASRStreamingState, gen_text: str) -> None:
@@ -267,4 +310,5 @@ class Qwen3ASRModel:
         state.language = lang
         state.partials_list.append(txt)
         state.text = self._recompose_partials(state.partials_list)
+        state.partials_list = []
         state.chunk_id += 1
