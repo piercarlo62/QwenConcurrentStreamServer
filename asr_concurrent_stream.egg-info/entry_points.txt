@@ -1,3 +1,0 @@
-[console_scripts]
-asr-concurrent-client = client.example_client:main
-asr-concurrent-server = server._launch_server:main
