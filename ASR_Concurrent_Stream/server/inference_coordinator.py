@@ -373,7 +373,7 @@ class InferenceCoordinator:
     @staticmethod
     def _save_partials_debug(partials: list, stream_id: str, final_text: str = "") -> None:
         try:
-            out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "partials_lists")
+            out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "partials_lists")
             os.makedirs(out_dir, exist_ok=True)
             ts = int(time.time())
             short_id = stream_id[:8] if stream_id else "unknown"
