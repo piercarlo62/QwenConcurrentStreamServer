@@ -3,3 +3,10 @@ __pycache__/
 build/
 *.egg-info/
 .venv/
+.DS_Store
+.git/
+.github/
+FidaTTS/
+Qwen3-ASR/
+Qwen3-TTS/
+Qwen3-LLM/
