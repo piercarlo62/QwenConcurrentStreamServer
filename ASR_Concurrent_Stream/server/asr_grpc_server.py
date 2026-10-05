@@ -40,7 +40,7 @@ class HealthHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            body = json.dumps({"status": "healthy", "version": "1.0.0"}).encode()
+            body = json.dumps({"status": "healthy", "version": "1.0.8"}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -249,7 +249,7 @@ class ASRServiceImpl(asr_pb2_grpc.ASRServiceServicer):
                 chunk_size_sec=stream.config.chunk_size_sec,
                 unfixed_chunk_num=stream.config.unfixed_chunk_num,
                 unfixed_token_num=stream.config.unfixed_token_num,
-                context_before_sec=2.0,
+                context_before_sec=5.0,
                 context_after_sec=0.5,
             )
 
