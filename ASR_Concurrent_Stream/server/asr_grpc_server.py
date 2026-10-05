@@ -395,6 +395,9 @@ async def serve(
     max_concurrent_streams: int = 30,
     health_port: int = 8080,
     punctuate: bool = False,
+    context_before_sec: float = 8.0,
+    chunk_size_sec: float = 1.0,
+    context_after_sec: float = 1.0,
 ):
     """Start the gRPC server and HTTP health endpoint"""
     logger.info("Starting ASR Concurrent Stream server...")
@@ -416,6 +419,9 @@ async def serve(
         logger.info("Model loaded")
 
         inference_coordinator = InferenceCoordinator(model=model)
+        inference_coordinator.context_before_sec = context_before_sec
+        inference_coordinator.chunk_size_sec = chunk_size_sec
+        inference_coordinator.context_after_sec = context_after_sec
         await inference_coordinator.start()
 
     servicer = ASRServiceImpl(stream_manager, inference_coordinator)

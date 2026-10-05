@@ -51,6 +51,10 @@ class InferenceCoordinator:
         self._result_queues: Dict[str, asyncio.Queue] = {}
         self._result_queues_lock = asyncio.Lock()
 
+        self.context_before_sec: float = 8.0
+        self.chunk_size_sec: float = 1.0
+        self.context_after_sec: float = 1.0
+
         self._finalization_requested: set = set()
         self._finalization_events: Dict[str, asyncio.Event] = {}
         self._finalization_events_lock = asyncio.Lock()
@@ -73,11 +77,11 @@ class InferenceCoordinator:
         stream_id: str,
         context: str = "",
         language: Optional[str] = None,
-        chunk_size_sec: float = 1.0,
+        chunk_size_sec: float = None,
         unfixed_chunk_num: int = 2,
         unfixed_token_num: int = 5,
-        context_before_sec: float = 8.0,
-        context_after_sec: float = 1.0,
+        context_before_sec: float = None,
+        context_after_sec: float = None,
     ) -> None:
         async with self._states_lock:
             if stream_id in self._stream_states:
@@ -87,9 +91,9 @@ class InferenceCoordinator:
                 language=language,
                 unfixed_chunk_num=unfixed_chunk_num,
                 unfixed_token_num=unfixed_token_num,
-                chunk_size_sec=chunk_size_sec,
-                context_before_sec=context_before_sec,
-                context_after_sec=context_after_sec,
+                chunk_size_sec=chunk_size_sec if chunk_size_sec is not None else self.chunk_size_sec,
+                context_before_sec=context_before_sec if context_before_sec is not None else self.context_before_sec,
+                context_after_sec=context_after_sec if context_after_sec is not None else self.context_after_sec,
             )
             self._stream_states[stream_id] = asr_state
 

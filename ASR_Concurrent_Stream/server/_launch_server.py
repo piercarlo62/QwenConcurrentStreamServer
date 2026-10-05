@@ -81,6 +81,24 @@ def parse_args() -> argparse.Namespace:
         help="HTTP health check port (default: 8080)",
     )
     serve_parser.add_argument(
+        "--context-before-sec",
+        type=float,
+        default=float(os.environ.get("ASR_CONTEXT_BEFORE_SEC", "8.0")),
+        help="Past context window in seconds (default: 8.0)",
+    )
+    serve_parser.add_argument(
+        "--chunk-size-sec",
+        type=float,
+        default=float(os.environ.get("ASR_CHUNK_SIZE_SEC", "1.0")),
+        help="Audio chunk size in seconds (default: 1.0)",
+    )
+    serve_parser.add_argument(
+        "--context-after-sec",
+        type=float,
+        default=float(os.environ.get("ASR_CONTEXT_AFTER_SEC", "1.0")),
+        help="Future context window in seconds (default: 1.0)",
+    )
+    serve_parser.add_argument(
         "--punctuate",
         action="store_true",
         default=False,
@@ -101,6 +119,9 @@ async def _run_serve(args: argparse.Namespace) -> None:
         max_concurrent_streams=args.max_concurrent_streams,
         health_port=args.health_port,
         punctuate=args.punctuate,
+        context_before_sec=args.context_before_sec,
+        chunk_size_sec=args.chunk_size_sec,
+        context_after_sec=args.context_after_sec,
     )
 
     print(f"ASR gRPC server running on port {args.port}", flush=True)
