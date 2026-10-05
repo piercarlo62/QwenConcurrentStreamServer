@@ -30,11 +30,11 @@ dev = [
 ]
 
 [project.scripts]
-asr-concurrent-server = "server._launch_server:main"
-asr-concurrent-client = "client.example_client:main"
+asr-concurrent-server = "ASR_Concurrent_Stream.server._launch_server:main"
+asr-concurrent-client = "ASR_Concurrent_Stream.client.example_client:main"
 
 [project.urls]
-Homepage = "https://github.com/Qwen/Qwen3-ASR"
+Homepage = "https://github.com/piercarlo62/QwenConcurrentStreamServer"
 
 [tool.setuptools]
-packages = ["proto", "server", "client"]
+packages = ["ASR_Concurrent_Stream", "ASR_Concurrent_Stream.proto", "ASR_Concurrent_Stream.server", "ASR_Concurrent_Stream.client"]
