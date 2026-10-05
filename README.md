@@ -27,21 +27,35 @@ pip install asr-concurrent-stream[dev]
 ### Start the server
 
 ```bash
-asr-concurrent-server
+asr-concurrent-server serve
 ```
 
-The server reads configuration from environment variables:
+All configuration via CLI arguments:
 
-| Variable | Default | Description |
+```bash
+asr-concurrent-server serve \
+    --model Qwen/Qwen3-ASR-1.7B \
+    --port 8000 \
+    --gpu-memory-utilization 0.30 \
+    --max-model-len 4096 \
+    --max-num-batched-tokens 2048 \
+    --max-num-seqs 16 \
+    --max-concurrent-streams 15 \
+    --health-port 8080
+```
+
+| Argument | Default | Description |
 |----------|---------|-------------|
-| `ASR_PORT` | `8000` | gRPC server port |
-| `ASR_MODEL_PATH` | `Qwen/Qwen3-ASR-1.7B` | Model path or HuggingFace ID |
-| `ASR_GPU_MEMORY_UTILIZATION` | `0.30` | GPU memory fraction |
-| `ASR_MAX_MODEL_LEN` | `4096` | Maximum model sequence length |
-| `ASR_MAX_NUM_BATCHED_TOKENS` | `2048` | Max tokens per vLLM batch |
-| `ASR_MAX_NUM_SEQS` | `16` | Max concurrent sequences in vLLM |
-| `ASR_MAX_CONCURRENT_STREAMS` | `15` | Maximum concurrent streams (excess queued) |
-| `ASR_HEALTH_PORT` | `8080` | HTTP health check port |
+| `--model` | `Qwen/Qwen3-ASR-1.7B` | Model path or HuggingFace ID |
+| `--port` | `8000` | gRPC server port |
+| `--gpu-memory-utilization` | `0.30` | GPU memory fraction |
+| `--max-model-len` | `4096` | Maximum model sequence length |
+| `--max-num-batched-tokens` | `2048` | Max tokens per vLLM batch |
+| `--max-num-seqs` | `16` | Max concurrent sequences in vLLM |
+| `--max-concurrent-streams` | `15` | Maximum concurrent streams (excess queued) |
+| `--health-port` | `8080` | HTTP health check port |
+
+Environment variables (`ASR_PORT`, `ASR_MODEL_PATH`, etc.) are also supported as fallback.
 
 ### Run the client
 
@@ -123,7 +137,7 @@ Optional client dependencies: `soundfile` or `scipy` (for audio loading/resampli
 8. **Launcher patch** — `run_asr_grpc_server.sh` is updated:
    - `PORT` → `8002`
    - `MODEL_PATH` → `/app/models/Qwen3-ASR-1.7B`
-   - `QWEN3_ASR_PATH` → site-packages `qwen_asr` path
+   - `QWEN3_ASR_PATH` is no longer needed (vLLM loads model directly)
 
 ## Build & Run
 
