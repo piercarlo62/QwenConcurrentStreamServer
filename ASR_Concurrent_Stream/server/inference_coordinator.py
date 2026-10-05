@@ -235,6 +235,8 @@ class InferenceCoordinator:
 
             text_before = state.text
 
+            self.model._save_partials_debug(state.partials_list, stream_id)
+
             inp = self.model.finish_streaming_transcribe(state)
             if inp is not None:
                 request_id = f"{stream_id}-finalize"
