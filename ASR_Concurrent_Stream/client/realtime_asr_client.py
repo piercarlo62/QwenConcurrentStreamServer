@@ -44,11 +44,15 @@ class RealtimeASRClient:
         port: int = 8001,
         language: str = "Italian",
         silence_duration_ms: int = SILENCE_DURATION_MS,
+        vad_threshold: float = VAD_THRESHOLD,
+        pad_ms: int = PAD_MS,
     ):
         self.host = host
         self.port = port
         self.language = language
         self.silence_duration_ms = silence_duration_ms
+        self.vad_threshold = vad_threshold
+        self.pad_ms = pad_ms
 
         self.on_partial: Optional[Callable[[str], None]] = None
         self.on_final: Optional[Callable[[str], None]] = None
@@ -114,14 +118,14 @@ class RealtimeASRClient:
         vad_iter = VADIterator(
             model,
             sampling_rate=SAMPLE_RATE,
-            threshold=VAD_THRESHOLD,
+            threshold=self.vad_threshold,
             min_silence_duration_ms=self.silence_duration_ms,
         )
 
         buffer = np.array([], dtype=np.float32)
         in_speech = False
         chunk_id = 0
-        pad_samples = int(PAD_MS * SAMPLE_RATE / 1000)
+        pad_samples = int(self.pad_ms * SAMPLE_RATE / 1000)
         pre_speech_chunks = []
 
         while True:
