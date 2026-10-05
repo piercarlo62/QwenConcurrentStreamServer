@@ -218,7 +218,7 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.raw_model_output = txt
+        state.text = txt
         state.chunk_id += 1
 
     def finish_streaming_transcribe(self, state: ASRStreamingState) -> Optional[TextPrompt]:
