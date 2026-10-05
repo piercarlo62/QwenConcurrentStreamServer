@@ -142,6 +142,17 @@ class Qwen3ASRModel:
             _raw_decoded="",
         )
 
+    MAX_PREFIX_TOKENS = 30
+
+    def _cap_prefix(self, prefix: str, state: ASRStreamingState) -> str:
+        if not prefix:
+            return ""
+        tokens = self.processor.tokenizer.encode(prefix)
+        if len(tokens) <= self.MAX_PREFIX_TOKENS:
+            return prefix
+        tokens = tokens[-self.MAX_PREFIX_TOKENS:]
+        return self.processor.tokenizer.decode(tokens)
+
     def _compute_prefix(self, state: ASRStreamingState) -> str:
         if state.chunk_id < state.unfixed_chunk_num:
             return ""
@@ -198,6 +209,7 @@ class Qwen3ASRModel:
             state.history = state.history[-state.context_before_samples:]
 
         prefix = self._compute_prefix(state)
+        prefix = self._cap_prefix(prefix, state)
         prompt = state.prompt_raw + prefix
         return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
@@ -221,11 +233,12 @@ class Qwen3ASRModel:
             state.history = state.history[-state.context_before_samples:]
 
         if tail.shape[0] < state.chunk_size_samples:
-            return None
+            tail = np.pad(tail, (0, state.chunk_size_samples - tail.shape[0]))
 
         window = self._build_window(state, tail)
 
         prefix = self._compute_prefix(state)
+        prefix = self._cap_prefix(prefix, state)
         prompt = state.prompt_raw + prefix
         return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
