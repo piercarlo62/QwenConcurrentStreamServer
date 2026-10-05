@@ -9,10 +9,9 @@ import numpy as np
 from server.asr_processor import AsrProcessor
 from server.asr_utils import (
     SAMPLE_RATE,
-    detect_and_fix_repetitions,
     normalize_language_name,
-    parse_asr_output,
     validate_language,
+    parse_asr_output,
 )
 
 
@@ -106,6 +105,13 @@ class Qwen3ASRModel:
         unfixed_chunk_num: int = 2,
         unfixed_token_num: int = 5,
         chunk_size_sec: float = 1.0,
+    def init_streaming_state(
+        self,
+        context: str = "",
+        language: Optional[str] = None,
+        unfixed_chunk_num: int = 2,
+        unfixed_token_num: int = 5,
+        chunk_size_sec: float = 1.0,
         context_before_sec: float = 8.0,
         context_after_sec: float = 1.0,
     ) -> ASRStreamingState:
@@ -144,6 +150,7 @@ class Qwen3ASRModel:
         )
 
     MAX_PREFIX_TOKENS = 30
+    MIN_CHUNK_SEC = 0.3
 
     def _cap_prefix(self, prefix: str, state: ASRStreamingState) -> str:
         if not prefix:
@@ -197,7 +204,8 @@ class Qwen3ASRModel:
         if x.shape[0] > 0:
             state.buffer = np.concatenate([state.buffer, x], axis=0)
 
-        if state.buffer.shape[0] < state.chunk_size_samples:
+        min_samples = int(self.MIN_CHUNK_SEC * SAMPLE_RATE)
+        if state.buffer.shape[0] < min_samples:
             return None
 
         chunk = state.buffer[:state.chunk_size_samples]
@@ -248,7 +256,7 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.text = detect_and_fix_repetitions(txt)
+        state.text = txt
         state.chunk_id += 1
 
 
