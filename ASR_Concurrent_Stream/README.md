@@ -5,7 +5,7 @@ Concurrent streaming gRPC server and client for Qwen3-ASR with vLLM continuous b
 ## Installation
 
 ```bash
-pip install asr-concurrent-stream
+pip install asr-concurrent-stream==1.0.9
 ```
 
 For client-side audio loading and VAD segmentation:
@@ -30,17 +30,21 @@ pip install asr-concurrent-stream[dev]
 asr-concurrent-server serve
 ```
 
-All configuration via CLI arguments:
+Recommended settings:
 
 ```bash
 asr-concurrent-server serve \
-    --model Qwen/Qwen3-ASR-1.7B \
-    --port 8000 \
+    --model "Qwen/Qwen3-ASR-1.7B" \
+    --port 8001 \
+    --punctuate \
+    --context-before-sec 8.0 \
+    --chunk-size-sec 1.0 \
+    --context-after-sec 0.5 \
     --gpu-memory-utilization 0.30 \
-    --max-model-len 4096 \
-    --max-num-batched-tokens 2048 \
+    --max-model-len 3072 \
+    --max-num-batched-tokens 3072 \
     --max-num-seqs 16 \
-    --max-concurrent-streams 15 \
+    --max-concurrent-streams 50 \
     --health-port 8080
 ```
 
@@ -48,6 +52,10 @@ asr-concurrent-server serve \
 |----------|---------|-------------|
 | `--model` | `Qwen/Qwen3-ASR-1.7B` | Model path or HuggingFace ID |
 | `--port` | `8000` | gRPC server port |
+| `--punctuate` | `false` | Enable punctuation in transcription output |
+| `--context-before-sec` | `8.0` | Past context window (seconds) |
+| `--chunk-size-sec` | `1.0` | Audio chunk size (seconds) |
+| `--context-after-sec` | `0.5` | Future context window (seconds) |
 | `--gpu-memory-utilization` | `0.30` | GPU memory fraction |
 | `--max-model-len` | `4096` | Maximum model sequence length |
 | `--max-num-batched-tokens` | `2048` | Max tokens per vLLM batch |
@@ -55,13 +63,62 @@ asr-concurrent-server serve \
 | `--max-concurrent-streams` | `15` | Maximum concurrent streams (excess queued) |
 | `--health-port` | `8080` | HTTP health check port |
 
-Environment variables (`ASR_PORT`, `ASR_MODEL_PATH`, etc.) are also supported as fallback.
+Environment variables (`ASR_PORT`, `ASR_MODEL_PATH`, `ASR_CONTEXT_BEFORE_SEC`, `ASR_CHUNK_SIZE_SEC`, `ASR_CONTEXT_AFTER_SEC`, etc.) are also supported as fallback.
 
-### Run the client
+### Run the microphone client
 
 ```bash
-asr-concurrent-client --audio path/to/audio.wav --language Italian
+pip install sounddevice
+python client/mic_example.py --host localhost --port 8001 --language Italian --silence-ms 200 --vad-threshold 0.5 --pad-ms 150
 ```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--host` | `localhost` | gRPC server host |
+| `--port` | `8001` | gRPC server port |
+| `--language` | `Italian` | Transcription language |
+| `--silence-ms` | `200` | VAD silence threshold (ms) |
+| `--vad-threshold` | `0.5` | VAD speech probability threshold (0.0-1.0) |
+| `--pad-ms` | `150` | Audio padding before speech start (ms) |
+
+### Importable Event-Based Client
+
+`client/realtime_asr_client.py` provides a source-agnostic, event-driven ASR client:
+
+```python
+import asyncio
+from client.realtime_asr_client import RealtimeASRClient
+
+async def main():
+    client = RealtimeASRClient(host="localhost", port=8001, language="Italian")
+
+    client.on_partial = lambda text: print(f"partial: {text}")
+    client.on_final = lambda text, server_ms: print(f"final: {text}")
+
+    await client.start()
+
+    # Feed audio from any source (mic, file, websocket, etc.)
+    # Raw int16 mono PCM bytes at 16 kHz:
+    client.feed_audio(raw_int16_bytes)
+
+    await client.stop()
+
+asyncio.run(main())
+```
+
+**Events:**
+- `on_partial(text)` — called as partial transcripts arrive from the server
+- `on_final(text, server_ms)` — called when VAD detects end of speech (includes server latency in ms)
+
+**Parameters:**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `host` | `localhost` | gRPC server host |
+| `port` | `8001` | gRPC server port |
+| `language` | `Italian` | Transcription language |
+| `silence_duration_ms` | `200` | Minimum silence (ms) for VAD segmentation |
+| `vad_threshold` | `0.5` | VAD speech probability threshold (0.0-1.0) |
+| `pad_ms` | `150` | Audio padding before speech start (ms) |
 
 ## Architecture
 
@@ -81,11 +138,11 @@ Client gRPC bidir stream
 
 Instead of re-encoding the full accumulated audio for each chunk (quadratic cost), the server uses a fixed sliding window:
 
-- **Past context**: 2.0s before current chunk
-- **Present**: 0.5s current chunk
+- **Past context**: 8.0s before current chunk
+- **Present**: 1.0s current chunk
 - **Future context**: 0.5s lookahead from buffer
 
-This bounds prefill cost to ~3 seconds of audio regardless of total utterance length.
+This bounds prefill cost to ~9.5 seconds of audio regardless of total utterance length. The prefix (previous transcription) is capped to 30 tokens to match the audio window and prevent model confusion.
 
 ### Stream Queuing
 
@@ -100,8 +157,6 @@ When `MAX_CONCURRENT_STREAMS` is reached, new streams are queued instead of reje
 | 50 | 171ms | 5.7s |
 
 ## Realtime Microphone Streaming Client
-
-For realtime microphone transcription with VAD-based segmentation:
 
 ### Quick Start
 
@@ -118,42 +173,19 @@ python client/mic_stream_client.py --host localhost --port 8001
 
 This captures microphone audio via `sounddevice`, runs Silero VAD with a 200ms silence threshold to detect speech segments, and streams each segment to the gRPC server. Partial transcripts display in real-time; final results print on newline per segment.
 
-### Importable Event-Based Client
+### Latency Metrics
 
-`client/realtime_asr_client.py` provides a source-agnostic, event-driven ASR client:
+The client displays three latency metrics on final transcription:
 
-```python
-import asyncio
-from client.realtime_asr_client import RealtimeASRClient
-
-async def main():
-    client = RealtimeASRClient(host="localhost", port=8001, language="Italian")
-
-    client.on_partial = lambda text: print(f"partial: {text}")
-    client.on_final = lambda text: print(f"final: {text}")
-
-    await client.start()
-
-    # Feed audio from any source (mic, file, websocket, etc.)
-    # Raw int16 mono PCM bytes at 16 kHz:
-    client.feed_audio(raw_int16_bytes)
-
-    await client.stop()
-
-asyncio.run(main())
+```
+[FINAL][submit=37ms speech=237ms server=74ms] text...
 ```
 
-**Events:**
-- `on_partial(text)` — called as partial transcripts arrive from the server
-- `on_final(text)` — called when VAD detects end of speech
-
-**Parameters:**
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `host` | `localhost` | gRPC server host |
-| `port` | `8001` | gRPC server port |
-| `language` | `Italian` | Transcription language |
-| `silence_duration_ms` | `200` | Minimum silence (ms) for VAD segmentation |
+| Metric | Measures |
+|--------|----------|
+| `submit` | Last audio chunk sent → final result |
+| `speech` | First silence detected → final result (end-to-end) |
+| `server` | Server-side finalize processing time |
 
 ## Dependencies
 
