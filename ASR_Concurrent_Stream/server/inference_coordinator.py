@@ -232,6 +232,8 @@ class InferenceCoordinator:
             if state is None:
                 return None
 
+            text_before = state.text
+
             inp = self.model.finish_streaming_transcribe(state)
             if inp is not None:
                 request_id = f"{stream_id}-finalize"
@@ -239,6 +241,9 @@ class InferenceCoordinator:
                 async for output in self.engine.generate(inp, self.sampling_params, request_id):
                     gen_text = output.outputs[0].text
                 self.model.apply_finalize_output(state, gen_text)
+
+            if len(state.text) < len(text_before):
+                state.text = text_before
 
             latency_ms = (time.perf_counter() - start_time) * 1000
 
