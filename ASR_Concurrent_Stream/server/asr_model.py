@@ -262,9 +262,38 @@ class Qwen3ASRModel:
         return H[n][best_j], best_j, M[n][best_j]
 
     @staticmethod
+    def _is_prefix(committed: List[str], new: List[str]) -> bool:
+        if len(committed) > len(new):
+            return False
+        for i in range(len(committed)):
+            if Qwen3ASRModel._norm(committed[i]) != Qwen3ASRModel._norm(new[i]):
+                return False
+        return True
+
+    @staticmethod
+    def _fuzzy_prefix_match(committed: List[str], new: List[str]) -> int:
+        best = 0
+        max_check = min(len(committed), len(new))
+        for k in range(max_check, 1, -1):
+            match = True
+            for i in range(k):
+                if Qwen3ASRModel._norm(committed[i]) != Qwen3ASRModel._norm(new[i]):
+                    match = False
+                    break
+            if match:
+                best = k
+                break
+        return best
+
+    @staticmethod
     def _merge_words(committed: List[str], new: List[str]) -> List[str]:
         if not committed:
             return list(new)
+
+        prefix_len = Qwen3ASRModel._fuzzy_prefix_match(committed, new)
+        if prefix_len >= min(len(committed), 2):
+            return list(new)
+
         max_tail = Qwen3ASRModel.MAX_TAIL
         unstable = Qwen3ASRModel.UNSTABLE
         min_matches = Qwen3ASRModel.MIN_MATCHES
