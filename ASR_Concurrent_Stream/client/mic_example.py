@@ -2,6 +2,7 @@ import asyncio
 import sys
 import os
 import argparse
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,11 +34,14 @@ async def main():
         pad_ms=args.pad_ms,
     )
 
+    last_chunk_time = [0.0]
+
     def on_partial(text):
         print(f"\r[partial] {text}", end="", flush=True)
 
     def on_final(text):
-        print(f"\n[final]   {text}\n")
+        latency_ms = int((time.time() - last_chunk_time[0]) * 1000) if last_chunk_time[0] > 0 else 0
+        print(f"\n[FINAL][{latency_ms}ms] {text}\n")
 
     client.on_partial = on_partial
     client.on_final = on_final
@@ -49,6 +53,7 @@ async def main():
     def cb(indata, frames, t, status):
         if status:
             print(status)
+        last_chunk_time[0] = time.time()
         client.feed_audio(bytes(indata))
 
     with sd.RawInputStream(
