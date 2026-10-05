@@ -8,9 +8,11 @@ scheduler batches requests across all active streams dynamically.
 
 import asyncio
 import logging
+import re
 import time
 import numpy as np
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,70 @@ class TranscriptionResult:
     timestamp_ms: int = field(default_factory=lambda: int(time.time() * 1000))
 
 
+def _norm_word(w: str) -> str:
+    return re.sub(r"[^\w]", "", w.lower())
+
+
+def _word_similarity(a: str, b: str) -> float:
+    a, b = _norm_word(a), _norm_word(b)
+    if not a or not b:
+        return 0.0
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def _align_tail_head(tail, head, gap=-1.5, match_thr=0.75):
+    n, m = len(tail), len(head)
+    H = [[0.0] * (m + 1) for _ in range(n + 1)]
+    for j in range(1, m + 1):
+        H[0][j] = H[0][j - 1] + gap
+    for i in range(1, n + 1):
+        H[i][0] = 0.0
+        for j in range(1, m + 1):
+            sim = _word_similarity(tail[i - 1], head[j - 1])
+            sp = 2.0 * sim if sim >= match_thr else -1.0
+            H[i][j] = max(
+                H[i - 1][j - 1] + sp,
+                H[i - 1][j] + gap,
+                H[i][j - 1] + gap,
+            )
+    best_j = max(range(1, m + 1), key=lambda j: H[n][j])
+    return H[n][best_j], best_j
+
+
+def _overlap_merge(committed: str, new: str, min_matches=2, min_ratio=0.5,
+                   max_tail=20, unstable=2) -> List[str]:
+    if not committed:
+        return new.split()
+    cwords = committed.split()
+    nwords = new.split()
+    if not nwords:
+        return cwords
+    tail_start = max(0, len(cwords) - max_tail)
+    tail = cwords[tail_start:]
+    head = nwords[:len(tail) + 5]
+    score, j = _align_tail_head(tail, head)
+    min_matched = min(len(tail), j)
+    effective_min = min(min_matches, min_matched)
+    ok = score >= effective_min and score / max(1, min_matched) >= min_ratio
+    if not ok:
+        return cwords + nwords
+    keep = max(0, len(cwords) - unstable)
+    kept_tail = cwords[tail_start:keep]
+    if kept_tail:
+        _, j_kept = _align_tail_head(kept_tail, head)
+        return cwords[:keep] + nwords[j_kept:]
+    if keep <= tail_start:
+        return cwords[:tail_start] + nwords
+    return cwords + nwords[j:]
+
+
 class InferenceCoordinator:
+    MATCH_THRESHOLD = 0.75
+    GAP = -1.5
+    MAX_TAIL = 20
+    UNSTABLE = 2
+    MIN_MATCHES = 2
+    MIN_RATIO = 0.5
 
     def __init__(self, model: Any):
         self.model = model
@@ -50,6 +115,9 @@ class InferenceCoordinator:
 
         self._result_queues: Dict[str, asyncio.Queue] = {}
         self._result_queues_lock = asyncio.Lock()
+
+        self._stream_partials: Dict[str, list] = {}
+        self._partials_lock = asyncio.Lock()
 
         self._finalization_requested: set = set()
         self._finalization_events: Dict[str, asyncio.Event] = {}
@@ -90,7 +158,6 @@ class InferenceCoordinator:
                 chunk_size_sec=chunk_size_sec,
                 context_before_sec=context_before_sec,
                 context_after_sec=context_after_sec,
-                stream_id=stream_id,
             )
             self._stream_states[stream_id] = asr_state
 
@@ -187,6 +254,19 @@ class InferenceCoordinator:
                     async for output in self.engine.generate(inp, self.sampling_params, request_id):
                         gen_text = output.outputs[0].text
                     self.model.apply_output(state, gen_text)
+                    raw_words = state.raw_model_output if hasattr(state, 'raw_model_output') else gen_text
+                    async with self._partials_lock:
+                        if stream_id not in self._stream_partials:
+                            self._stream_partials[stream_id] = []
+                        self._stream_partials[stream_id].append(raw_words)
+                        merged = _overlap_merge(
+                            state.text, raw_words,
+                            min_matches=self.MIN_MATCHES,
+                            min_ratio=self.MIN_RATIO,
+                            max_tail=self.MAX_TAIL,
+                            unstable=self.UNSTABLE,
+                        )
+                        state.text = " ".join(merged)
                     inp = self.model.prepare_chunk(state, np.zeros(0, dtype=np.float32))
 
                 if state.text != last_emitted_text:
@@ -238,8 +318,6 @@ class InferenceCoordinator:
 
             text_before = state.text
 
-            self.model._save_partials_debug(state.partials_list, stream_id)
-
             inp = self.model.finish_streaming_transcribe(state)
             if inp is not None:
                 request_id = f"{stream_id}-finalize"
@@ -247,6 +325,21 @@ class InferenceCoordinator:
                 async for output in self.engine.generate(inp, self.sampling_params, request_id):
                     gen_text = output.outputs[0].text
                 self.model.apply_finalize_output(state, gen_text)
+
+            async with self._partials_lock:
+                if stream_id not in self._stream_partials:
+                    self._stream_partials[stream_id] = []
+                self._stream_partials[stream_id].append(state.raw_model_output)
+                merged = _overlap_merge(
+                    state.text, state.raw_model_output,
+                    min_matches=self.MIN_MATCHES,
+                    min_ratio=self.MIN_RATIO,
+                    max_tail=self.MAX_TAIL,
+                    unstable=self.UNSTABLE,
+                )
+                state.text = " ".join(merged)
+                self._save_partials_debug(self._stream_partials[stream_id], stream_id)
+                del self._stream_partials[stream_id]
 
             if len(state.text) < len(text_before):
                 state.text = text_before
@@ -275,6 +368,20 @@ class InferenceCoordinator:
         except Exception as e:
             logger.error(f"Error finalizing stream {stream_id}: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def _save_partials_debug(partials: list, stream_id: str) -> None:
+        try:
+            out_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "partials_lists")
+            os.makedirs(out_dir, exist_ok=True)
+            ts = int(time.time())
+            short_id = stream_id[:8] if stream_id else "unknown"
+            filepath = os.path.join(out_dir, f"{ts}_{short_id}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                for i, p in enumerate(partials):
+                    f.write(f"[partial {i}] {p}\n")
+        except Exception:
+            pass
 
     async def _send_to_stream_queue(self, result: Optional[TranscriptionResult]):
         if result is None:
