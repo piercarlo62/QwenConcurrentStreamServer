@@ -1,5 +1,5 @@
 """
-gRPC Server for ASR Concurrent Stream
+gRPC Server for ASR Concurrent Stream v1.0.6
 
 Uses generated protobuf code from proto/asr.proto
 """

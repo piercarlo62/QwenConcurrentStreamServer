@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ASR Concurrent Stream Server v1.0.6
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

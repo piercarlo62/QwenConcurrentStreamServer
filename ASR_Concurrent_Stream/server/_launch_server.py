@@ -1,5 +1,5 @@
 """
-Launcher for asr_grpc_server.py — called by run_asr_grpc_server.sh
+Launcher for asr_grpc_server.py v1.0.6 — called by run_asr_grpc_server.sh
 and via the `asr-concurrent-server` entry point.
 
 Usage:

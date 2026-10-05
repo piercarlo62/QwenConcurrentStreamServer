@@ -1,5 +1,5 @@
 """
-Stream Manager for ASR Concurrent Stream Server
+Stream Manager for ASR Concurrent Stream Server v1.0.6
 
 Manages per-stream lifecycle, state tracking, resource limits, and finalization.
 Provides async-safe operations for stream creation, access, and cleanup.

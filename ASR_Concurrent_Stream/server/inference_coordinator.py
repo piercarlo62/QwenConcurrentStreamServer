@@ -1,5 +1,5 @@
 """
-Inference Coordinator for ASR Concurrent Stream Server
+Inference Coordinator for ASR Concurrent Stream Server v1.0.6
 
 Uses vLLM's AsyncLLMEngine for continuous batching at the GPU level.
 Each stream has its own asyncio.Queue and worker coroutine. The vLLM

@@ -1,3 +1,4 @@
+# ASR Concurrent Stream Server v1.0.6
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
