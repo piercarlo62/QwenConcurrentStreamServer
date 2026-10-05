@@ -364,7 +364,7 @@ def main() -> None:
     parser.add_argument(
         "--silence-ms",
         type=int,
-        default=400,
+        default=800,
         help="Minimum silence (ms) between speech segments for VAD segmentation",
     )
     parser.add_argument(

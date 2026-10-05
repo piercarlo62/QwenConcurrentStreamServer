@@ -232,13 +232,14 @@ class InferenceCoordinator:
             if state is None:
                 return None
 
-            inp = self.model.finish_streaming_transcribe(state)
-            if inp is not None:
-                request_id = f"{stream_id}-finalize"
-                gen_text = ""
-                async for output in self.engine.generate(inp, self.sampling_params, request_id):
-                    gen_text = output.outputs[0].text
-                self.model.apply_finalize_output(state, gen_text)
+            if state.buffer is not None and state.buffer.shape[0] > 0:
+                inp = self.model.finish_streaming_transcribe(state)
+                if inp is not None:
+                    request_id = f"{stream_id}-finalize"
+                    gen_text = ""
+                    async for output in self.engine.generate(inp, self.sampling_params, request_id):
+                        gen_text = output.outputs[0].text
+                    self.model.apply_finalize_output(state, gen_text)
 
             latency_ms = (time.perf_counter() - start_time) * 1000
 
