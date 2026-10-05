@@ -64,6 +64,7 @@ class RealtimeASRClient:
         self._tasks: list = []
         self._segment_idx = 0
         self.speech_end_time: float = 0.0
+        self._in_speech: bool = False
 
     async def start(self):
         channel = grpc.aio.insecure_channel(
@@ -88,6 +89,14 @@ class RealtimeASRClient:
     def feed_audio(self, audio_bytes: bytes):
         """Feed raw int16 mono PCM audio from any source."""
         if self._running:
+            pcm = np.frombuffer(audio_bytes, dtype=np.int16)
+            rms = np.sqrt(np.mean(pcm.astype(np.float32) ** 2))
+            if rms < 500:
+                if self.speech_end_time == 0.0 or self._in_speech:
+                    self.speech_end_time = time.time()
+                    self._in_speech = False
+            else:
+                self._in_speech = True
             self._audio_queue.put(audio_bytes)
 
     async def _stream_loop(self):
@@ -169,11 +178,6 @@ class RealtimeASRClient:
                     in_speech = False
                     chunk_id = 0
                 elif in_speech:
-                    if speech_prob < self.vad_threshold:
-                        if self.speech_end_time == 0.0:
-                            self.speech_end_time = time.time()
-                    else:
-                        self.speech_end_time = 0.0
                     await out_q.put(("audio", chunk_id, int16_bytes))
                     chunk_id += 1
 
