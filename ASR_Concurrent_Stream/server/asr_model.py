@@ -86,8 +86,11 @@ class Qwen3ASRModel:
         )
 
     def _build_text_prompt(self, context: str, force_language: Optional[str]) -> str:
+        system_msg = context or ""
+        if "punctuate" not in system_msg.lower():
+            system_msg = (system_msg + " Transcribe the audio with proper punctuation including periods, question marks, and commas.").strip()
         msgs = [
-            {"role": "system", "content": context or ""},
+            {"role": "system", "content": system_msg},
             {"role": "user", "content": [{"type": "audio", "audio": ""}]},
         ]
         base = self.processor.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
