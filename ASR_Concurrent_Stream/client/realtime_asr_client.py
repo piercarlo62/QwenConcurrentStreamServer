@@ -129,6 +129,7 @@ class RealtimeASRClient:
         chunk_id = 0
         pad_samples = int(self.pad_ms * SAMPLE_RATE / 1000)
         pre_speech_chunks = []
+        speech_start_time = 0.0
 
         while True:
             raw = await self._loop.run_in_executor(None, audio_q.get)
@@ -155,6 +156,8 @@ class RealtimeASRClient:
 
                 if ev is not None and "start" in ev and not in_speech:
                     in_speech = True
+                    speech_start_time = time.time()
+                    self.speech_end_time = 0.0
                     for pc in pre_speech_chunks:
                         await out_q.put(("audio", chunk_id, pc))
                         chunk_id += 1
@@ -162,11 +165,15 @@ class RealtimeASRClient:
                     await out_q.put(("audio", chunk_id, int16_bytes))
                     chunk_id += 1
                 elif ev is not None and "end" in ev and in_speech:
-                    self.speech_end_time = time.time()
                     await out_q.put(("final", chunk_id, int16_bytes))
                     in_speech = False
                     chunk_id = 0
                 elif in_speech:
+                    if ev is None:
+                        if self.speech_end_time == 0.0:
+                            self.speech_end_time = time.time()
+                    else:
+                        self.speech_end_time = 0.0
                     await out_q.put(("audio", chunk_id, int16_bytes))
                     chunk_id += 1
 
