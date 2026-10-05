@@ -142,6 +142,7 @@ class InferenceCoordinator:
 
     async def _stream_worker(self, stream_id: str, queue: asyncio.Queue):
         sentinel_sent = False
+        last_emitted_text = ""
         try:
             while True:
                 req = await queue.get()
@@ -188,15 +189,17 @@ class InferenceCoordinator:
                     self.model.apply_output(state, gen_text)
                     inp = self.model.prepare_chunk(state, np.zeros(0, dtype=np.float32))
 
-                result = TranscriptionResult(
-                    stream_id=stream_id,
-                    chunk_id=last_chunk_id,
-                    text=state.text,
-                    language=state.language,
-                    is_final=False,
-                    latency_ms=0.0,
-                )
-                await self._send_to_stream_queue(result)
+                if state.text != last_emitted_text:
+                    result = TranscriptionResult(
+                        stream_id=stream_id,
+                        chunk_id=last_chunk_id,
+                        text=state.text,
+                        language=state.language,
+                        is_final=False,
+                        latency_ms=0.0,
+                    )
+                    await self._send_to_stream_queue(result)
+                    last_emitted_text = state.text
 
                 if final_present:
                     result = await self._do_finalize(stream_id)

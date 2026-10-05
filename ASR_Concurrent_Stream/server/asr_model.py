@@ -275,9 +275,9 @@ class Qwen3ASRModel:
         head = new[:len(tail) + 5]
 
         score, j, matches = Qwen3ASRModel._align_tail_head(tail, head)
-        overlap_len = max(len(tail), j)
         min_matched = min(len(tail), j)
-        ok = matches >= min_matches and matches / max(1, min_matched) >= min_ratio
+        effective_min = min(min_matches, min_matched)
+        ok = matches >= effective_min and matches / max(1, min_matched) >= min_ratio
 
         if not ok:
             return committed + list(new)
