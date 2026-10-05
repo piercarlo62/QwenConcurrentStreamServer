@@ -9,9 +9,10 @@ import numpy as np
 from server.asr_processor import AsrProcessor
 from server.asr_utils import (
     SAMPLE_RATE,
+    detect_and_fix_repetitions,
     normalize_language_name,
-    validate_language,
     parse_asr_output,
+    validate_language,
 )
 
 
@@ -247,7 +248,7 @@ class Qwen3ASRModel:
         state._raw_decoded = (prefix + gen_text) if prefix is not None else gen_text
         lang, txt = parse_asr_output(state._raw_decoded, user_language=state.force_language)
         state.language = lang
-        state.text = txt
+        state.text = detect_and_fix_repetitions(txt)
         state.chunk_id += 1
 
 
