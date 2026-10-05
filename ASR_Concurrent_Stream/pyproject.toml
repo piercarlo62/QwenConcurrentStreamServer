@@ -36,10 +36,6 @@ asr-concurrent-client = "client.example_client:main"
 [project.urls]
 Homepage = "https://github.com/piercarlo62/QwenConcurrentStreamServer"
 
-[tool.setuptools]
-packages = ["proto", "server", "client"]
-
-[tool.setuptools.package-dir]
-proto = "ASR_Concurrent_Stream/proto"
-server = "ASR_Concurrent_Stream/server"
-client = "ASR_Concurrent_Stream/client"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["proto*", "server*", "client*"]
