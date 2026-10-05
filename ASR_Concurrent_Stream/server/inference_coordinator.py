@@ -68,31 +68,33 @@ def _align_tail_head(tail, head, gap=-1.5, match_thr=0.75):
     return H[n][best_j], best_j
 
 
-def _overlap_merge(committed: str, new: str, min_matches=2, min_ratio=0.5,
-                   max_tail=20, unstable=2) -> List[str]:
-    if not committed:
-        return new.split()
-    cwords = committed.split()
-    nwords = new.split()
-    if not nwords:
-        return cwords
-    tail_start = max(0, len(cwords) - max_tail)
-    tail = cwords[tail_start:]
-    head = nwords[:len(tail) + 5]
-    score, j = _align_tail_head(tail, head)
-    min_matched = min(len(tail), j)
-    effective_min = min(min_matches, min_matched)
-    ok = score >= effective_min and score / max(1, min_matched) >= min_ratio
-    if not ok:
-        return cwords + nwords
-    keep = max(0, len(cwords) - unstable)
-    kept_tail = cwords[tail_start:keep]
-    if kept_tail:
-        _, j_kept = _align_tail_head(kept_tail, head)
-        return cwords[:keep] + nwords[j_kept:]
-    if keep <= tail_start:
-        return cwords[:tail_start] + nwords
-    return cwords + nwords[j:]
+def _extract_new_suffix_words(prev_words: List[str], new_words: List[str],
+                              min_matches=2) -> List[str]:
+    """Compare previous partial with current partial.
+    Find the longest prefix of new_words that overlaps with a prefix of prev_words.
+    Return only the non-overlapping suffix from new_words.
+    """
+    if not prev_words:
+        return list(new_words)
+    if not new_words:
+        return []
+    best = 0
+    max_check = min(len(prev_words), len(new_words))
+    for k in range(max_check, 0, -1):
+        match = True
+        for j in range(k):
+            if _word_similarity(prev_words[j], new_words[j]) < 0.6:
+                match = False
+                break
+        if match:
+            best = k
+            break
+    if best >= min_matches:
+        return new_words[best:]
+    for k in range(min(len(prev_words), len(new_words)), 0, -1):
+        if _word_similarity(prev_words[k - 1], new_words[0]) >= 0.6:
+            return new_words
+    return new_words
 
 
 class InferenceCoordinator:
@@ -118,6 +120,7 @@ class InferenceCoordinator:
         self._result_queues_lock = asyncio.Lock()
 
         self._stream_partials: Dict[str, list] = {}
+        self._prev_partial_words: Dict[str, List[str]] = {}
         self._partials_lock = asyncio.Lock()
 
         self._finalization_requested: set = set()
@@ -260,14 +263,14 @@ class InferenceCoordinator:
                         if stream_id not in self._stream_partials:
                             self._stream_partials[stream_id] = []
                         self._stream_partials[stream_id].append(raw_words)
-                        merged = _overlap_merge(
-                            state.text, raw_words,
-                            min_matches=self.MIN_MATCHES,
-                            min_ratio=self.MIN_RATIO,
-                            max_tail=self.MAX_TAIL,
-                            unstable=self.UNSTABLE,
-                        )
-                        state.text = " ".join(merged)
+                        new_words = raw_words.split()
+                        prev_words = self._prev_partial_words.get(stream_id, [])
+                        new_suffix = _extract_new_suffix_words(prev_words, new_words)
+                        if state.text and new_suffix:
+                            state.text += " " + " ".join(new_suffix)
+                        elif new_suffix:
+                            state.text = " ".join(new_suffix)
+                        self._prev_partial_words[stream_id] = new_words
                     inp = self.model.prepare_chunk(state, np.zeros(0, dtype=np.float32))
 
                 if state.text != last_emitted_text:
@@ -331,17 +334,16 @@ class InferenceCoordinator:
                 if stream_id not in self._stream_partials:
                     self._stream_partials[stream_id] = []
                 self._stream_partials[stream_id].append(state.raw_model_output)
-                merged = _overlap_merge(
-                    state.text, state.raw_model_output,
-                    min_matches=self.MIN_MATCHES,
-                    min_ratio=self.MIN_RATIO,
-                    max_tail=self.MAX_TAIL,
-                    unstable=self.UNSTABLE,
-                )
-                state.text = " ".join(merged)
-                final_text = " ".join(merged)
-                self._save_partials_debug(self._stream_partials[stream_id], stream_id, final_text)
+                final_words = state.raw_model_output.split() if state.raw_model_output else []
+                prev_words = self._prev_partial_words.get(stream_id, [])
+                new_suffix = _extract_new_suffix_words(prev_words, final_words)
+                if state.text and new_suffix:
+                    state.text += " " + " ".join(new_suffix)
+                elif new_suffix:
+                    state.text = " ".join(new_suffix)
+                self._save_partials_debug(self._stream_partials[stream_id], stream_id, state.text)
                 del self._stream_partials[stream_id]
+                del self._prev_partial_words[stream_id]
 
             if len(state.text) < len(text_before):
                 state.text = text_before
