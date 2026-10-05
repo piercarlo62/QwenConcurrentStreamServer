@@ -17,7 +17,7 @@ from proto import asr_pb2
 from proto import asr_pb2_grpc
 
 SAMPLE_RATE = 16000
-BLOCK_SIZE = 1600
+BLOCK_SIZE = 512
 VAD_THRESHOLD = 0.5
 SILENCE_DURATION_MS = 200
 PAD_MS = 150
@@ -38,8 +38,6 @@ class RealtimeASRClient:
 
         await client.stop()
     """
-
-    RMS_WINDOW_BYTES = 512 * 2  # 32ms at 16kHz
 
     def __init__(
         self,
@@ -66,8 +64,6 @@ class RealtimeASRClient:
         self._tasks: list = []
         self._segment_idx = 0
         self.speech_end_time: float = 0.0
-        self._in_speech: bool = False
-        self._rms_buffer = bytearray()
 
     async def start(self):
         channel = grpc.aio.insecure_channel(
@@ -91,21 +87,8 @@ class RealtimeASRClient:
 
     def feed_audio(self, audio_bytes: bytes):
         """Feed raw int16 mono PCM audio from any source."""
-        if not self._running:
-            return
-        self._rms_buffer.extend(audio_bytes)
-        while len(self._rms_buffer) >= self.RMS_WINDOW_BYTES:
-            window = bytes(self._rms_buffer[:self.RMS_WINDOW_BYTES])
-            self._rms_buffer = self._rms_buffer[self.RMS_WINDOW_BYTES:]
-            pcm = np.frombuffer(window, dtype=np.int16)
-            rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
-            if rms < 500:
-                if self._in_speech:
-                    self.speech_end_time = time.time()
-                    self._in_speech = False
-            else:
-                self._in_speech = True
-        self._audio_queue.put(audio_bytes)
+        if self._running:
+            self._audio_queue.put(audio_bytes)
 
     async def _stream_loop(self):
         while self._running:
@@ -163,6 +146,8 @@ class RealtimeASRClient:
                 buffer = buffer[VAD_WINDOW:]
                 int16_bytes = (window * 32767).astype(np.int16).tobytes()
 
+                speech_prob = model(torch.from_numpy(window), SAMPLE_RATE).item()
+
                 if not in_speech:
                     pre_speech_chunks.append(int16_bytes)
                     if len(pre_speech_chunks) * VAD_WINDOW > pad_samples:
@@ -173,7 +158,6 @@ class RealtimeASRClient:
                 if ev is not None and "start" in ev and not in_speech:
                     in_speech = True
                     self.speech_end_time = 0.0
-                    self._in_speech = True
                     for pc in pre_speech_chunks:
                         await out_q.put(("audio", chunk_id, pc))
                         chunk_id += 1
@@ -185,6 +169,11 @@ class RealtimeASRClient:
                     in_speech = False
                     chunk_id = 0
                 elif in_speech:
+                    if speech_prob < self.vad_threshold:
+                        if self.speech_end_time == 0.0:
+                            self.speech_end_time = time.time()
+                    else:
+                        self.speech_end_time = 0.0
                     await out_q.put(("audio", chunk_id, int16_bytes))
                     chunk_id += 1
 

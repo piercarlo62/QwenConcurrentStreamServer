@@ -62,7 +62,7 @@ async def main():
         samplerate=16000,
         channels=1,
         dtype="int16",
-        blocksize=1600,
+        blocksize=512,
         callback=cb,
     ):
         try:
