@@ -221,7 +221,7 @@ class RealtimeASRClient:
             async for response in self._stub.StreamTranscribe(chunk_generator()):
                 if response.is_final:
                     if self.on_final:
-                        self.on_final(response.partial_transcript)
+                        self.on_final(response.partial_transcript, response.latency_ms)
                 else:
                     if self.on_partial:
                         self.on_partial(response.partial_transcript)

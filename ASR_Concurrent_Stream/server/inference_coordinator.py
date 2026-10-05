@@ -151,8 +151,11 @@ class InferenceCoordinator:
                 req = await queue.get()
 
                 if req.chunk_id == -1:
+                    finalize_start = time.perf_counter()
                     result = await self._do_finalize(stream_id)
                     if result:
+                        server_ms = (time.perf_counter() - finalize_start) * 1000
+                        result.latency_ms = server_ms
                         await self._send_to_stream_queue(result)
                     sentinel_sent = True
                     break
