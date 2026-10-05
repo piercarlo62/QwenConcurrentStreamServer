@@ -104,9 +104,9 @@ class Qwen3ASRModel:
         language: Optional[str] = None,
         unfixed_chunk_num: int = 2,
         unfixed_token_num: int = 5,
-        chunk_size_sec: float = 0.5,
-        context_before_sec: float = 5.0,
-        context_after_sec: float = 0.5,
+        chunk_size_sec: float = 1.0,
+        context_before_sec: float = 8.0,
+        context_after_sec: float = 1.0,
     ) -> ASRStreamingState:
         force_language = None
         if language is not None and str(language).strip() != "":

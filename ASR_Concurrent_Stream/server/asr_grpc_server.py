@@ -249,8 +249,8 @@ class ASRServiceImpl(asr_pb2_grpc.ASRServiceServicer):
                 chunk_size_sec=stream.config.chunk_size_sec,
                 unfixed_chunk_num=stream.config.unfixed_chunk_num,
                 unfixed_token_num=stream.config.unfixed_token_num,
-                context_before_sec=5.0,
-                context_after_sec=0.5,
+                context_before_sec=8.0,
+                context_after_sec=1.0,
             )
 
             logger.info(f"Stream {stream_id}: Started")

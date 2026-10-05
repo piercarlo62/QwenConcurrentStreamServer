@@ -171,7 +171,7 @@ class RealtimeASRClient:
         stream_id = str(uuid.uuid4())
 
         config = asr_pb2.StreamConfig(
-            chunk_size_sec=0.5, unfixed_chunk_num=2, unfixed_token_num=5
+            chunk_size_sec=1.0, unfixed_chunk_num=2, unfixed_token_num=5
         )
         start_resp = await self._stub.StartStream(
             asr_pb2.StreamStartRequest(

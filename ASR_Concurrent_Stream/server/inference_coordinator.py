@@ -73,11 +73,11 @@ class InferenceCoordinator:
         stream_id: str,
         context: str = "",
         language: Optional[str] = None,
-        chunk_size_sec: float = 0.5,
+        chunk_size_sec: float = 1.0,
         unfixed_chunk_num: int = 2,
         unfixed_token_num: int = 5,
-        context_before_sec: float = 5.0,
-        context_after_sec: float = 0.5,
+        context_before_sec: float = 8.0,
+        context_after_sec: float = 1.0,
     ) -> None:
         async with self._states_lock:
             if stream_id in self._stream_states:
