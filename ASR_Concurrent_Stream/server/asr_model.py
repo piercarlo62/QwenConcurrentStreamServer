@@ -213,10 +213,17 @@ class Qwen3ASRModel:
         state.buffer = np.zeros((0,), dtype=np.float32)
 
         state.history = np.concatenate([state.history, tail], axis=0)
+        if state.history.shape[0] > state.context_before_samples:
+            state.history = state.history[-state.context_before_samples:]
+
+        if tail.shape[0] < state.chunk_size_samples:
+            return None
+
+        window = self._build_window(state, tail)
 
         prefix = self._compute_prefix(state)
         prompt = state.prompt_raw + prefix
-        return TextPrompt(prompt=prompt, multi_modal_data={"audio": [state.history]})
+        return TextPrompt(prompt=prompt, multi_modal_data={"audio": [window]})
 
     def apply_finalize_output(self, state: ASRStreamingState, gen_text: str) -> None:
         prefix = self._compute_prefix(state)
