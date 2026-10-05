@@ -99,6 +99,62 @@ When `MAX_CONCURRENT_STREAMS` is reached, new streams are queued instead of reje
 | 10 | 83ms | 5.5s |
 | 50 | 171ms | 5.7s |
 
+## Realtime Microphone Streaming Client
+
+For realtime microphone transcription with VAD-based segmentation:
+
+### Quick Start
+
+```bash
+pip install sounddevice
+python client/mic_example.py
+```
+
+### Console Client
+
+```bash
+python client/mic_stream_client.py --host localhost --port 8001
+```
+
+This captures microphone audio via `sounddevice`, runs Silero VAD with a 200ms silence threshold to detect speech segments, and streams each segment to the gRPC server. Partial transcripts display in real-time; final results print on newline per segment.
+
+### Importable Event-Based Client
+
+`client/realtime_asr_client.py` provides a source-agnostic, event-driven ASR client:
+
+```python
+import asyncio
+from client.realtime_asr_client import RealtimeASRClient
+
+async def main():
+    client = RealtimeASRClient(host="localhost", port=8001, language="Italian")
+
+    client.on_partial = lambda text: print(f"partial: {text}")
+    client.on_final = lambda text: print(f"final: {text}")
+
+    await client.start()
+
+    # Feed audio from any source (mic, file, websocket, etc.)
+    # Raw int16 mono PCM bytes at 16 kHz:
+    client.feed_audio(raw_int16_bytes)
+
+    await client.stop()
+
+asyncio.run(main())
+```
+
+**Events:**
+- `on_partial(text)` — called as partial transcripts arrive from the server
+- `on_final(text)` — called when VAD detects end of speech
+
+**Parameters:**
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `host` | `localhost` | gRPC server host |
+| `port` | `8001` | gRPC server port |
+| `language` | `Italian` | Transcription language |
+| `silence_duration_ms` | `200` | Minimum silence (ms) for VAD segmentation |
+
 ## Dependencies
 
 | Package | Purpose |
@@ -109,7 +165,7 @@ When `MAX_CONCURRENT_STREAMS` is reached, new streams are queued instead of reje
 | `vllm` | vLLM async inference engine with continuous batching |
 | `transformers` | Model processor and tokenizer |
 
-Optional client dependencies: `soundfile` or `scipy` (for audio loading/resampling), `torch` (for Silero VAD segmentation).
+Optional client dependencies: `soundfile` or `scipy` (for audio loading/resampling), `torch` (for Silero VAD segmentation), `sounddevice` (for microphone capture).
 
 ---
 
@@ -190,7 +246,10 @@ Hard-coded defaults in `server/run_asr_grpc_server.sh`:
 │   │   ├── asr_utils.py
 │   │   └── run_asr_grpc_server.sh
 │   └── client/
-│       └── example_client.py
+│       ├── example_client.py
+│       ├── mic_stream_client.py
+│       ├── mic_example.py
+│       └── realtime_asr_client.py
 └── models/
     └── Qwen3-ASR-1.7B/      # Pre-downloaded model
 ```
