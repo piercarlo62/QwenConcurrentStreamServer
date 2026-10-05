@@ -129,7 +129,6 @@ class RealtimeASRClient:
         chunk_id = 0
         pad_samples = int(self.pad_ms * SAMPLE_RATE / 1000)
         pre_speech_chunks = []
-        speech_start_time = 0.0
 
         while True:
             raw = await self._loop.run_in_executor(None, audio_q.get)
@@ -147,6 +146,8 @@ class RealtimeASRClient:
                 buffer = buffer[VAD_WINDOW:]
                 int16_bytes = (window * 32767).astype(np.int16).tobytes()
 
+                speech_prob = model(torch.from_numpy(window), SAMPLE_RATE).item()
+
                 if not in_speech:
                     pre_speech_chunks.append(int16_bytes)
                     if len(pre_speech_chunks) * VAD_WINDOW > pad_samples:
@@ -156,7 +157,6 @@ class RealtimeASRClient:
 
                 if ev is not None and "start" in ev and not in_speech:
                     in_speech = True
-                    speech_start_time = time.time()
                     self.speech_end_time = 0.0
                     for pc in pre_speech_chunks:
                         await out_q.put(("audio", chunk_id, pc))
@@ -169,7 +169,7 @@ class RealtimeASRClient:
                     in_speech = False
                     chunk_id = 0
                 elif in_speech:
-                    if ev is None:
+                    if speech_prob < self.vad_threshold:
                         if self.speech_end_time == 0.0:
                             self.speech_end_time = time.time()
                     else:
