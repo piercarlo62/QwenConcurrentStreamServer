@@ -12,5 +12,6 @@ exec "$PYTHON" -u -m server._launch_server serve \
     --max-model-len 3072 \
     --max-num-batched-tokens 3072 \
     --max-num-seqs 16 \
+    --kv-cache-memory 0 \
     --max-concurrent-streams 50 \
     --health-port 8080

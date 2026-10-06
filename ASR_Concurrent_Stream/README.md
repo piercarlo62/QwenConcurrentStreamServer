@@ -5,7 +5,7 @@ Concurrent streaming gRPC server and client for Qwen3-ASR with vLLM continuous b
 ## Installation
 
 ```bash
-pip install asr-concurrent-stream==1.0.9
+pip install asr-concurrent-stream==1.0.10
 ```
 
 For client-side audio loading and VAD segmentation:
@@ -44,6 +44,7 @@ asr-concurrent-server serve \
     --max-model-len 3072 \
     --max-num-batched-tokens 3072 \
     --max-num-seqs 16 \
+    --kv-cache-memory 0 \
     --max-concurrent-streams 50 \
     --health-port 8080
 ```
@@ -60,6 +61,7 @@ asr-concurrent-server serve \
 | `--max-model-len` | `4096` | Maximum model sequence length |
 | `--max-num-batched-tokens` | `2048` | Max tokens per vLLM batch |
 | `--max-num-seqs` | `16` | Max concurrent sequences in vLLM |
+| `--kv-cache-memory` | `0` | KV cache memory pool size in MiB, 0 for auto |
 | `--max-concurrent-streams` | `15` | Maximum concurrent streams (excess queued) |
 | `--health-port` | `8080` | HTTP health check port |
 
