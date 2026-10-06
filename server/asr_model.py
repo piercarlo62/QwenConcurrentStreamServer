@@ -60,15 +60,20 @@ class Qwen3ASRModel:
         cls,
         model: str,
         max_new_tokens: int = 4096,
+        kv_cache_memory: int = 0,
         **kwargs,
     ):
+        import inspect
         from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
-        engine_args = AsyncEngineArgs(
+        engine_kwargs = dict(
             model=model,
             limit_mm_per_prompt={"audio": 1},
             **kwargs,
         )
+        if kv_cache_memory > 0 and "kv_cache_memory" in inspect.signature(AsyncEngineArgs.__init__).parameters:
+            engine_kwargs["kv_cache_memory"] = kv_cache_memory
+        engine_args = AsyncEngineArgs(**engine_kwargs)
         engine = AsyncLLMEngine.from_engine_args(engine_args)
 
         processor = AsrProcessor.from_pretrained(model, fix_mistral_regex=True)

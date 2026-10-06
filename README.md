@@ -5,7 +5,7 @@ Concurrent streaming gRPC server and client for Qwen3-ASR with vLLM continuous b
 ## Installation
 
 ```bash
-pip install asr-concurrent-stream==1.0.10
+pip install asr-concurrent-stream==1.0.11
 ```
 
 For client-side audio loading and VAD segmentation:
