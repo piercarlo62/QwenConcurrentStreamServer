@@ -4,6 +4,7 @@ build/
 *.egg-info/
 .venv/
 .DS_Store
+server/partials_lists/
 .git/
 .github/
 FidaTTS/
