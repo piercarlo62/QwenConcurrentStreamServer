@@ -5,6 +5,7 @@ build/
 .venv/
 .DS_Store
 server/partials_lists/
+.vscode/
 .git/
 .github/
 FidaTTS/
