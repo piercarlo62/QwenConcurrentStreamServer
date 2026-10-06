@@ -392,7 +392,7 @@ async def serve(
     max_model_len: int = 4096,
     max_num_batched_tokens: int = 2048,
     max_num_seqs: int = 16,
-    kv_cache_memory: int = 0,
+    kv_cache_memory_bytes: int = 0,
     max_concurrent_streams: int = 30,
     health_port: int = 8080,
     punctuate: bool = False,
@@ -414,7 +414,7 @@ async def serve(
             max_model_len=max_model_len,
             max_num_batched_tokens=max_num_batched_tokens,
             max_num_seqs=max_num_seqs,
-            kv_cache_memory=kv_cache_memory,
+            kv_cache_memory_bytes=kv_cache_memory_bytes,
             max_new_tokens=32,
         )
         model.punctuate = punctuate

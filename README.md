@@ -44,7 +44,7 @@ asr-concurrent-server serve \
     --max-model-len 3072 \
     --max-num-batched-tokens 3072 \
     --max-num-seqs 16 \
-    --kv-cache-memory 0 \
+    --kv-cache-memory-bytes 0 \
     --max-concurrent-streams 50 \
     --health-port 8080
 ```
@@ -61,7 +61,7 @@ asr-concurrent-server serve \
 | `--max-model-len` | `4096` | Maximum model sequence length |
 | `--max-num-batched-tokens` | `2048` | Max tokens per vLLM batch |
 | `--max-num-seqs` | `16` | Max concurrent sequences in vLLM |
-| `--kv-cache-memory` | `0` | KV cache memory pool size in MiB, 0 for auto |
+| `--kv-cache-memory-bytes` | `0` | KV cache memory pool size in bytes, 0 for auto |
 | `--max-concurrent-streams` | `15` | Maximum concurrent streams (excess queued) |
 | `--health-port` | `8080` | HTTP health check port |
 

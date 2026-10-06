@@ -69,10 +69,10 @@ def parse_args() -> argparse.Namespace:
         help="Max concurrent sequences in vLLM (default: 16)",
     )
     serve_parser.add_argument(
-        "--kv-cache-memory",
+        "--kv-cache-memory-bytes",
         type=int,
-        default=int(os.environ.get("ASR_KV_CACHE_MEMORY", "0")),
-        help="KV cache memory pool size in MiB, 0 for auto (default: 0)",
+        default=int(os.environ.get("ASR_KV_CACHE_MEMORY_BYTES", "0")),
+        help="KV cache memory pool size in bytes, 0 for auto (default: 0)",
     )
     serve_parser.add_argument(
         "--max-concurrent-streams",
@@ -122,7 +122,7 @@ async def _run_serve(args: argparse.Namespace) -> None:
         max_model_len=args.max_model_len,
         max_num_batched_tokens=args.max_num_batched_tokens,
         max_num_seqs=args.max_num_seqs,
-        kv_cache_memory=args.kv_cache_memory,
+        kv_cache_memory_bytes=args.kv_cache_memory_bytes,
         max_concurrent_streams=args.max_concurrent_streams,
         health_port=args.health_port,
         punctuate=args.punctuate,
