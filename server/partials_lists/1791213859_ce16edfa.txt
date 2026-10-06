@@ -1,0 +1,33 @@
+[partial 0] okay.
+[partial 1] Okay ciao.
+[partial 2] Okay ciao mi chiamo
+[partial 3] Okay ciao mi chiamo Piercarlo.
+[partial 4] Okay ciao mi chiamo Piercarlo e a.
+[partial 5] Okay ciao mi chiamo Piercarlo e adesso.
+[partial 6] Okay ciao mi chiamo Piercarlo e adesso faremo.
+[partial 7] Okay ciao mi chiamo Piercarlo e adesso faremo un
+[partial 8] Okay ciao mi chiamo Piercarlo e adesso faremo un.
+[partial 9] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo.
+[partial 10] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un
+[partial 11] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un
+[partial 12] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un
+[partial 13] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un
+[partial 14] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino.
+[partial 15] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua.
+[partial 16] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo.
+[partial 17] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è
+[partial 18] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto
+[partial 19] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto
+[partial 20] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto
+[partial 21] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no.
+[partial 22] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è
+[partial 23] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio
+[partial 24] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio
+[partial 25] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio
+[partial 26] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto
+[partial 27] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto
+[partial 28] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto come si dice
+[partial 29] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto come si dice
+[partial 30] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto come si dice
+[partial 31] Okay ciao mi chiamo Piercarlo e adesso faremo un diciamo un un casino qua perché vedo che non è tanto no non è proprio tanto come si dice
+[final] okay. Okay ciao. mi chiamo Piercarlo. e a. adesso. faremo. un diciamo. un un casino. qua. perché vedo. che non è tanto no. non è proprio tanto come si dice

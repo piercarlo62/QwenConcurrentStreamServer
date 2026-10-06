@@ -1,0 +1,4 @@
+[partial 0] ah.
+[partial 1] ah.
+[partial 2] ah.
+[final] ah. ah. ah.

@@ -1,0 +1,7 @@
+[partial 0] no
+[partial 1] no non va bene.
+[partial 2] no non va bene non va bene.
+[partial 3] no non va bene non va bene
+[partial 4] no non va bene non va bene
+[partial 5] no non va bene non va bene
+[final] no no non va bene. non va bene.

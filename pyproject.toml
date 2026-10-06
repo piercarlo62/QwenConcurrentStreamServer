@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "asr-concurrent-stream"
-version = "1.0.9"
+version = "1.0.10"
 description = "Concurrent streaming gRPC server and client for Qwen3-ASR"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -37,5 +37,5 @@ asr-concurrent-client = "client.example_client:main"
 Homepage = "https://github.com/piercarlo62/QwenConcurrentStreamServer"
 
 [tool.setuptools.packages.find]
-where = ["ASR_Concurrent_Stream"]
+where = ["."]
 include = ["proto*", "server*", "client*"]
